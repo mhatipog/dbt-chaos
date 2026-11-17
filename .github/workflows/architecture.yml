@@ -1,0 +1,28 @@
+name: Architecture comparison on actual dbt
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'dbt_chaos/dbt_runner.py'
+      - 'dbt_chaos/sql/**'
+      - 'tests/test_real_dbt.py'
+      - '.github/workflows/architecture.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: dbt-chaos-real-architecture
+  cancel-in-progress: true
+jobs:
+  dbt-duckdb:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e . dbt-core==1.10.15 dbt-duckdb==1.10.1 duckdb==1.4.4
+      - run: python -m unittest discover -s tests -p 'test_real_dbt.py' -v
