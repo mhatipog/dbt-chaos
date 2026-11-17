@@ -1,0 +1,29 @@
+name: Commerce source x SQL chaos
+on:
+  push:
+    branches: [research/source-sql-chaos, main]
+    paths:
+      - 'dbt_chaos/commerce.py'
+      - 'dbt_chaos/commerce_runner.py'
+      - 'dbt_chaos/commerce_sql/**'
+      - 'tests/test_commerce*.py'
+      - '.github/workflows/commerce-chaos.yml'
+      - 'pyproject.toml'
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  actual-dbt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - run: python -m unittest discover -s tests -p 'test_commerce.py' -v
+      - run: python -m unittest discover -s tests -p 'test_commerce_dbt.py' -v
