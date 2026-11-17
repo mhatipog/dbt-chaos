@@ -23,8 +23,8 @@ The 7 combined cases produced four emergent corruptions, two masked
 corruptions and one persistent corruption. There were no unexpected
 execution errors. A SQL sign-reversal defect generated invalid negative
 revenue and was **detected** by the gold-output data test; other incorrect
-gold results were not caught by the four generic data tests and the
-gold test. Input-specific alerts were reported separately.
+gold results were not caught by the configured gold checks (three
+not-null tests and two singular grain/nonnegative tests). Input-specific alerts were reported separately.
 
 This is a deliberately selected synthetic corpus, not a random
 sample of production incidents or a percentage reliability claim.
