@@ -56,7 +56,15 @@ def main(argv=None):
     cm.add_argument("--selection",choices=("representative","source","logic","combined"),default="representative")
     cm.add_argument("--max-cases",type=int,default=30)
     cm.add_argument("--out",type=Path,required=True)
+    cr=cmd.add_parser("commerce-report",help="Render local HTML from real commerce evidence")
+    cr.add_argument("file",type=Path)
+    cr.add_argument("--out",type=Path,required=True)
     args=parser.parse_args(argv)
+    if args.command=="commerce-report":
+        from .commerce_report import render_file
+        args.out.write_text(render_file(args.file),encoding="utf8")
+        print("Wrote standalone report:",args.out)
+        return 0
     if args.command=="commerce":
         from .commerce import CommerceCase,SOURCE_FAULTS,LOGIC_FAULTS
         from .commerce_runner import run_case

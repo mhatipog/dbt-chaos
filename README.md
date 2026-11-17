@@ -31,6 +31,7 @@ Run real dbt in a disposable local DuckDB environment:
 python -m pip install -e '.[dbt]'
 dbt-chaos commerce --source duplicate_customer --sql skip_customer_dedup
 dbt-chaos commerce-bench --selection representative --out commerce-results.json
+dbt-chaos commerce-report commerce-results.json --out commerce.html
 ~~~
 
 The reference contract cannot infer missing source events without an external
