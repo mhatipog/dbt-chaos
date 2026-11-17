@@ -1,0 +1,17 @@
+version: 2
+sources:
+  - name: raw
+    schema: raw
+    tables:
+      - name: orders
+      - name: customers
+      - name: payments
+models:
+  - name: gold_daily_revenue
+    columns:
+      - name: order_day
+        data_tests: [not_null]
+      - name: segment
+        data_tests: [not_null]
+      - name: revenue_cents
+        data_tests: [not_null]

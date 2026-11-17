@@ -1,0 +1,11 @@
+chaos_commerce:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('CHAOS_DB') }}"
+      schema: analytics
+      threads: 1
+      settings:
+        memory_limit: '2GB'
+        threads: 1
