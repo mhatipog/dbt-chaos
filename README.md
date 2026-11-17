@@ -11,6 +11,36 @@ On 17 November 2026, **120 actual dbt/DuckDB experiments** completed on public G
 [Full evidence and caveats](docs/RESULTS.md) · [Machine-readable aggregate](docs/results/full-matrix-2026-11-17.json) · [Public 120-test run](https://github.com/mhatipog/dbt-chaos/actions/runs/44039321822)
 
 
+## Source x SQL chaos: real three-table commerce platform
+
+The separate commerce workload joins synthetic orders, customers and payments.
+Its first 30-case real dbt benchmark completed successfully: 10 correct, 10 contained,
+1 detected failure, 9 silent output corruptions, and no execution errors.
+[Verified two-axis evidence](https://github.com/mhatipog/dbt-chaos/actions/runs/44056498668).
+
+It compares daily net EUR revenue with an independent Python business contract.
+
+Source chaos covers duplicates, orphan customers, invalid payments, wrong
+currency, cancellations, version changes, missing refunds and split captures.
+SQL chaos covers missing deduplication, wrong joins, sign reversals, ignored refunds,
+omitted filters and incorrect aggregation grain. Pair cases test interactions.
+
+The output explicitly distinguishes correct, contained, detected_failure,
+silent_corruption and execution_failure. Source data-quality alerts are
+recorded separately from errors in published gold metrics.
+
+Run real dbt in a disposable local DuckDB environment:
+
+~~~bash
+python -m pip install -e '.[dbt]'
+dbt-chaos commerce --source duplicate_customer --sql skip_customer_dedup
+dbt-chaos commerce-bench --selection representative --out commerce-results.json
+dbt-chaos commerce-report commerce-results.json --out commerce.html
+~~~
+
+The reference contract cannot infer missing source events without an external
+reconciliation feed. See docs/COMMERCE_CHAOS.md for the exact workload contract.
+
 ## What is actually implemented?
 
 - A versioned, seed-independent JSON replay format with event IDs, source versions, logical timestamps, amounts in integer cents, and CDC tombstones.
