@@ -23,6 +23,7 @@ python -m pip install -e .
 dbt-chaos faults
 dbt-chaos generate --seed 20261117 --count 100 --out campaign
 dbt-chaos bench --seed 20261117 --count 100 --out scores.json
+dbt-chaos report scores.json --out report.html
 dbt-chaos replay campaign/0001.json --strategy strict
 dbt-chaos minimize campaign/0001.json --strategy strict --out minimized.json
 ```
@@ -38,6 +39,8 @@ dbt-chaos bench-dbt --count 3 --strategies strict,offset,full --out verified.jso
 ```
 
 The real benchmark has a default maximum of 12 pipeline/case combinations and a 900-second scheduling budget; each dbt subprocess has a 100-second timeout. A GitHub Actions job also has a hard timeout.
+
+See the public [verified experiment results](docs/RESULTS.md) and [fault coverage matrix](docs/COVERAGE.md).
 
 ## Interpreting results
 

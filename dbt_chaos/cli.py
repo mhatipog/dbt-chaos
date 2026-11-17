@@ -41,7 +41,15 @@ def main(argv=None):
     rb.add_argument("--max-executions",type=int,default=12)
     rb.add_argument("--time-budget",type=int,default=900)
     rb.add_argument("--out",type=Path,required=True)
+    rp=cmd.add_parser("report",help="Render a local, self-contained HTML evidence report")
+    rp.add_argument("file",type=Path)
+    rp.add_argument("--out",type=Path,required=True)
     args=parser.parse_args(argv)
+    if args.command=="report":
+        from .report import load_and_render
+        args.out.write_text(load_and_render(args.file),encoding="utf8")
+        print("Wrote standalone report:",args.out)
+        return 0
     if args.command=="bench-dbt":
         from .real_score import run_campaign
         choices=tuple(args.strategies.split(","))
