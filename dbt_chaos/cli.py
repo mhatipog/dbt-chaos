@@ -29,6 +29,7 @@ def main(argv=None):
     m.add_argument("file",type=Path)
     m.add_argument("--strategy",choices=STRATEGIES,default="strict")
     m.add_argument("--out",type=Path,required=True)
+    m.add_argument("--confirm-dbt",action="store_true",help="Confirm original and shrunk failures against actual isolated dbt")
     real=cmd.add_parser("verify-dbt",help="Execute actual dbt on isolated synthetic DuckDB database")
     real.add_argument("file",type=Path)
     real.add_argument("--strategy",choices=STRATEGIES,default="strict")
@@ -105,6 +106,19 @@ def main(argv=None):
         return 0
     if args.command=="minimize":
         result=reduce_plan(plan,args.strategy)
+        if args.confirm_dbt:
+            from .dbt_runner import run_real
+            original=run_real(plan,args.strategy)
+            minimized=run_real(result["plan"],args.strategy)
+            def signature(item):
+                return (item["silent_corruption"],
+                        any(bool(point["alerts"]) for point in item["checkpoints"]))
+            if signature(original)!=signature(minimized) or not any(signature(original)):
+                raise RuntimeError("counterexample minimization did not preserve the real dbt failure signature")
+            evidence=args.out.with_suffix(".evidence.json")
+            evidence.write_text(json.dumps({"evidence_level":"executed_dbt_duckdb",
+                "original":original,"minimized":minimized},indent=2,sort_keys=True)+"\n",encoding="utf8")
+            print("Verified minimized failure twice in actual isolated dbt; evidence:",evidence)
         args.out.write_text(result["plan"].dumps(),encoding="utf8")
         print(f"minimized={result['changed']}, attempts={result['attempts']}, saved={args.out}")
         return 0
