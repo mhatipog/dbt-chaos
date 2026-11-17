@@ -1,6 +1,7 @@
 """Transparent evidence-ranked scoring; do not interpret the synthetic score as a field probability."""
 from collections import defaultdict
 from .core import DOMAINS,STRATEGIES,screen
+from .faults import coverage
 
 def evaluate(plans,strategies=STRATEGIES,lookback=10):
     data=defaultdict(list)
@@ -26,7 +27,11 @@ def evaluate(plans,strategies=STRATEGIES,lookback=10):
                         domains[domain][1]+=int(p["silent"])
         report[model]={
             "cases":len(runs),"fault_checkpoints":n,
-            "incorrect":wrong,"silent_corruption":silent,"detected_by_basic_tests":detected,
+            "incorrect":wrong,"correct_checkpoints":n-wrong,
+            "correctness_pct":round(100*(n-wrong)/n,2),
+            "silent_corruption":silent,"detected_by_basic_tests":detected,
+            "alerted_corruption":sum(int(p["mismatch"] and bool(p["alerts"])) for p in points),
+            "undetected_wrong_pct":round(100*silent/wrong,2) if wrong else None,
             "score_0_100":round(100*(n-silent)/n,2),
             "read_work_units":sum(run["read_work_units"] for run in runs),
             "pipeline_runs":sum(run["run_count"] for run in runs),
@@ -37,7 +42,7 @@ def evaluate(plans,strategies=STRATEGIES,lookback=10):
                       "Basic alerts only; not an arbitrary project's dbt tests.",
                       "Read work units approximate model work, not measured CPU hours or cost.",
                       "Unsupported fault domains are excluded and must not be claimed as tested."],
-            "strategies":report}
+            "coverage":coverage(plans), "strategies":report}
 
 def table(report):
     lines=["Strategy    Safe score  Silent  Checkpoints  Read units", "-"*55]

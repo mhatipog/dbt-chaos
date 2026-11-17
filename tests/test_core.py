@@ -4,7 +4,7 @@ import unittest
 from dataclasses import replace
 from pathlib import Path
 from dbt_chaos.core import Event,Plan,Step,STRATEGIES,DOMAINS,PLANNED,oracle,live,screen,read_plan
-from dbt_chaos.faults import generate
+from dbt_chaos.faults import generate,coverage
 from dbt_chaos.score import evaluate
 from dbt_chaos.shrink import reduce_plan
 
@@ -64,6 +64,13 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(0,score["strategies"]["full"]["silent_corruption"])
         self.assertLess(score["strategies"]["strict"]["score_0_100"],100)
         self.assertEqual(100,score["strategies"]["full"]["score_0_100"])
+    def test_pairwise_generation_coverage(self):
+        plans=generate(seed=112,count=210,max_faults=2)
+        result=coverage(plans)
+        self.assertEqual(20,result["executed_operator_kinds"])
+        self.assertEqual(190,result["possible_unordered_pairs"])
+        self.assertEqual(190,result["realized_distinct_pairs"])
+        self.assertEqual(1.0,result["pair_coverage_fraction"])
     def test_read_plan(self):
         plan=generate(count=1)[0]
         with tempfile.TemporaryDirectory() as tmp:
