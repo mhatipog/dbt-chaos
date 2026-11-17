@@ -46,7 +46,7 @@ def run_real(plan:Plan,strategy:str="strict",lookback:int=10)->dict:
                        DBT_PARTIAL_PARSE="false",DBT_USE_COLORS="false",OPENBLAS_NUM_THREADS="1",OMP_NUM_THREADS="1")
             artifact=project/"target"/"run_results.json"
             artifact.unlink(missing_ok=True)
-            arguments=[sys.executable,"-m","dbt",command,"--project-dir",str(project),
+            arguments=[str(Path(sys.executable).with_name("dbt")),command,"--project-dir",str(project),
                        "--profiles-dir",str(project),"--target",target,
                        "--vars",json.dumps({"strategy":strategy if target=="candidate" else "full",
                                             "lookback":lookback})]
