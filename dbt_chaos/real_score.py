@@ -29,6 +29,9 @@ def summarize_real(observations):
                 by_domain[domain][1]+=int(p["silent"])
         models[strategy]={
             "planned_runs":len(items),"executed_runs":len(valid),
+            "final_correct_cases":sum(int(not i["checkpoints"][-1]["mismatch"]) for i in valid if i.get("checkpoints")),
+            "recovered_cases":sum(int(any(p["mismatch"] for p in i["checkpoints"][1:-1])
+                and not i["checkpoints"][-1]["mismatch"]) for i in valid if i.get("checkpoints")),
             "execution_errors":len(items)-len(valid),"fault_checkpoints":num,
             "incorrect":incorrect,
             "correctness_pct":round(100*(num-incorrect)/num,2) if num else None,

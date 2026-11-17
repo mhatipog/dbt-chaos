@@ -28,6 +28,9 @@ def evaluate(plans,strategies=STRATEGIES,lookback=10):
                         domains[domain][1]+=int(p["silent"])
         report[model]={
             "cases":len(runs),"fault_checkpoints":n,
+            "final_correct_cases":sum(int(not r["checkpoints"][-1]["mismatch"]) for r in runs),
+            "recovered_cases":sum(int(any(p["mismatch"] for p in r["checkpoints"][1:-1])
+                and not r["checkpoints"][-1]["mismatch"]) for r in runs),
             "affected_key_checkpoints":sum(impact(p["delta"])["affected_keys"] for p in points),
             "absolute_synthetic_cents_exposure":sum(impact(p["delta"])["absolute_cents_exposure"] for p in points),
             "incorrect":wrong,"correct_checkpoints":n-wrong,

@@ -14,6 +14,8 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(report["silent_corruption"],1)
         self.assertEqual(report["score_0_100"],0)
         self.assertEqual(report["execution_errors"],1)
+        self.assertEqual(report["final_correct_cases"],0)
+        self.assertEqual(report["recovered_cases"],0)
     def test_merge_strict_provenance(self):
         def shard(name):
             return {"evidence_level":"executed_dbt_duckdb","schema_version":1,
