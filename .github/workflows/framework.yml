@@ -31,7 +31,7 @@ jobs:
       - name: Verify distributable wheel contains dbt SQL fixtures
         run: |
           python -m pip wheel --no-deps --disable-pip-version-check -w /tmp/dbt-chaos-wheels .
-          python -c "import glob,zipfile; p=glob.glob('/tmp/dbt-chaos-wheels/dbt_chaos-*.whl')[0]; names=set(zipfile.ZipFile(p).namelist()); required={'dbt_chaos/sql/dbt_project.yml','dbt_chaos/sql/profiles.yml','dbt_chaos/sql/models/orders.sql','dbt_chaos/sql/tests/live_amount_nonnegative.sql'}; assert required<=names,(required-names); print('Wheel includes real dbt fixtures')"
+          python -c "import glob,zipfile; p=glob.glob('/tmp/dbt-chaos-wheels/dbt_chaos-*.whl')[0]; names=set(zipfile.ZipFile(p).namelist()); required={'dbt_chaos/sql/dbt_project.yml','dbt_chaos/sql/profiles.yml','dbt_chaos/sql/models/orders.sql','dbt_chaos/sql/tests/live_amount_nonnegative.sql','dbt_chaos/commerce_sql/dbt_project.yml','dbt_chaos/commerce_sql/models/gold_daily_revenue.sql','dbt_chaos/commerce_sql/tests/source_invalid_payments.sql'}; assert required<=names,(required-names); print('Wheel includes real dbt fixtures')"
       - run: python -m dbt_chaos bench --seed 20261117 --count 150 --out /tmp/scores.json
       - run: python -m dbt_chaos report /tmp/scores.json --out /tmp/resilience.html
       - run: python -c "from pathlib import Path; t=Path('/tmp/resilience.html').read_text(); assert '<table>' in t and 'python_model_screen' in t"

@@ -48,7 +48,39 @@ def main(argv=None):
     merge=cmd.add_parser("merge-dbt",help="Aggregate validated real dbt evidence shards")
     merge.add_argument("files",type=Path,nargs="+")
     merge.add_argument("--out",type=Path,required=True)
+    commerce=cmd.add_parser("commerce",help="Execute source/SQL faults in real dbt on isolated DuckDB")
+    commerce.add_argument("--source",default="none")
+    commerce.add_argument("--sql",default="none")
+    commerce.add_argument("--out",type=Path)
+    cm=cmd.add_parser("commerce-bench",help="Run bounded source/SQL fault matrix in real dbt")
+    cm.add_argument("--selection",choices=("representative","source","logic","combined"),default="representative")
+    cm.add_argument("--max-cases",type=int,default=30)
+    cm.add_argument("--out",type=Path,required=True)
     args=parser.parse_args(argv)
+    if args.command=="commerce":
+        from .commerce import CommerceCase,SOURCE_FAULTS,LOGIC_FAULTS
+        from .commerce_runner import run_case
+        if args.source not in SOURCE_FAULTS or args.sql not in LOGIC_FAULTS:
+            parser.error("unsupported source/SQL fault; inspect the catalogue")
+        result=run_case(CommerceCase(args.source,args.sql))
+        output=json.dumps(result,indent=2,sort_keys=True)+"\n"
+        if args.out: args.out.write_text(output,encoding="utf8")
+        else: print(output)
+        return 0
+    if args.command=="commerce-bench":
+        from .commerce import cases
+        from .commerce_runner import run_matrix
+        selected=cases()
+        if args.selection=="source":
+            selected=[x for x in selected if x.origin in ("source","control")]
+        elif args.selection=="logic":
+            selected=[x for x in selected if x.origin in ("transformation","control")]
+        elif args.selection=="combined":
+            selected=[x for x in selected if x.origin in ("combined","control")]
+        report=run_matrix(selected,args.max_cases)
+        args.out.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf8")
+        print("Cases",report["cases"],"Outcomes",report["outcomes"])
+        return int(report["execution_errors"]>0)
     if args.command=="merge-dbt":
         from .real_score import merge_reports
         shards=[]
