@@ -1,5 +1,28 @@
 # Reproduced benchmark results — 17 November 2026
 
+## Full 20 × 6 real dbt matrix — 17 November 2026
+
+**120/120 actual dbt/DuckDB scenario–strategy combinations executed successfully** across ten independent public hosted runner shards. [Primary evidence: GitHub Actions run #44039321822](https://github.com/mhatipog/dbt-chaos/actions/runs/44039321822), source commit `1eae541446896156496ca0cbb2574f7d31a266bc`. Machine-readable [aggregated results](results/full-matrix-2026-11-17.json) are transcribed and summed from each shard's public job log.
+
+| Strategy | Correct checkpoints | Silent mismatches | Non-silent score | dbt invocations |
+|---|---:|---:|---:|---:|
+| Full refresh | 20/20 | 0 | 100% | 128 |
+| Source-version CDC | 20/20 | 0 | 100% | 128 |
+| Ingestion offset | 20/20 | 0 | 100% | 128 |
+| Rolling lookback | 17/20 | 3 | 85% | 128 |
+| Inclusive timestamp watermark | 15/20 | 5 | 75% | 128 |
+| Strict timestamp watermark | 13/20 | 7 | 65% | 128 |
+
+Across the 120 combinations there were 15 incorrect checkpoints, **all undetected by the four configured basic dbt tests**, and zero unexpected execution errors. The two deliberately invalid-data controls (negative and null amounts) triggered quality test alerts in each strategy. The source-version, offset and full-refresh approaches preserved correctness for all **tested** individual faults. Rolling lookback was better than strict global watermark under this specific input set but remained vulnerable to some backfills/future-time cases.
+
+The aggregate contains 768 executed dbt commands. Cumulative wall time per strategy (around 459–466 seconds across 20 cases) includes repeated dbt process startups, tests and reference refreshes; **do not use it as a performance-cost ranking**.
+
+All values are from a fixed synthetic workload, one snapshot per fault case, seed 20261117. These counts are *not* general incident frequencies, confidence intervals or proof that a given design handles all late arrivals, deletes, schema drift or production concurrency. Only 20 individual fault recipes are measured here; compound fault combinations require separate real-db testing.
+
+Reproduce the individual two-scenario shards using the [full-matrix workflow](https://github.com/mhatipog/dbt-chaos/blob/main/.github/workflows/full-matrix.yml) or with `dbt-chaos bench-dbt --seed 20261117 --start 0 --count 2 --strategies strict,inclusive,lookback,offset,cdc,full --out shard.json`. The runnable HTML report can be generated with `dbt-chaos report docs/results/full-matrix-2026-11-17.json --out matrix.html`.
+
+---
+
 **Evidence:** [Public GitHub Actions real benchmark run #44038297377](https://github.com/mhatipog/dbt-chaos/actions/runs/44038297377), conclusion **success**. Execution on GitHub-hosted Ubuntu x64 with pinned dbt-core 1.10.15, dbt-duckdb 1.10.1 and DuckDB 1.4.4.
 
 ## Real dbt comparison (synthetic)

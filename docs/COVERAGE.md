@@ -13,7 +13,7 @@
 | Scale | hot_key |
 | Positive controls | normal, fresh_update |
 
-These operators run in the **Python semantic screen**. The real dbt runner accepts the same serialized scenario format, but the complete operator/strategy matrix has not been experimentally executed.
+These operators run in the **Python semantic screen**. All 20 individual operators have now been executed against all six strategies on actual dbt/DuckDB: [120-combination run](https://github.com/mhatipog/dbt-chaos/actions/runs/44039321822). The complete **individual** operator matrix passed infrastructure checks. Compound operators and planned fault categories have **not** been fully executed against actual dbt.
 
 The seeded campaign generator first covers all 20 individual fault operators, then all 190 unordered fault pairs when 210 scenarios are requested with --max-faults 2. Subsequent runs can compose up to three operators. Unit tests verify the planned pair count. The score report also exposes *realized* pair coverage for shorter runs. This does not constitute path, temporal parameter, cross-engine or all-real-world fault coverage.
 
