@@ -14,6 +14,10 @@ On 17 November 2026, **120 actual dbt/DuckDB experiments** completed on public G
 ## Source x SQL chaos: real three-table commerce platform
 
 The separate commerce workload joins synthetic orders, customers and payments.
+Its first 30-case real dbt benchmark completed successfully: 10 correct, 10 contained,
+1 detected failure, 9 silent output corruptions, and no execution errors.
+[Verified two-axis evidence](https://github.com/mhatipog/dbt-chaos/actions/runs/44056498668).
+
 It compares daily net EUR revenue with an independent Python business contract.
 
 Source chaos covers duplicates, orphan customers, invalid payments, wrong
