@@ -2,7 +2,13 @@ name: Verified dbt baseline
 on:
   push:
     branches: [main]
+    paths:
+      - 'benchmarks/legacy/**'
+      - '.github/workflows/legacy.yml'
   workflow_dispatch:
+concurrency:
+  group: dbt-chaos-legacy
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:

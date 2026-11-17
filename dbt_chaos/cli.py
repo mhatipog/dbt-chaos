@@ -33,7 +33,26 @@ def main(argv=None):
     real.add_argument("file",type=Path)
     real.add_argument("--strategy",choices=STRATEGIES,default="strict")
     real.add_argument("--out",type=Path)
+    rb=cmd.add_parser("bench-dbt",help="Run bounded actual dbt/DuckDB strategy comparison")
+    rb.add_argument("--seed",type=int,default=42)
+    rb.add_argument("--count",type=int,default=3)
+    rb.add_argument("--strategies",default="strict,offset,full")
+    rb.add_argument("--max-executions",type=int,default=12)
+    rb.add_argument("--time-budget",type=int,default=900)
+    rb.add_argument("--out",type=Path,required=True)
     args=parser.parse_args(argv)
+    if args.command=="bench-dbt":
+        from .real_score import run_campaign
+        choices=tuple(args.strategies.split(","))
+        if not choices or any(s not in STRATEGIES for s in choices) or len(set(choices))!=len(choices):
+            parser.error("strategies must be a distinct subset of "+",".join(STRATEGIES))
+        report=run_campaign(generate(args.seed,args.count),choices,
+                            args.max_executions,args.time_budget)
+        args.out.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf8")
+        for name,score in report["strategies"].items():
+            print(f"{name}: score={score['score_0_100']}, silent={score['silent_corruption']}, errors={score['execution_errors']}")
+        print("Wrote actual dbt evidence:",args.out)
+        return int(any(score["execution_errors"] for score in report["strategies"].values()))
     if args.command=="faults":
         for name,domain in DOMAINS.items():
             print(f"{name:28} {domain:14} implemented")
