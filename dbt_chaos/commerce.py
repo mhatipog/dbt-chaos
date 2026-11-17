@@ -210,13 +210,21 @@ def assess(case: CommerceCase, observed: dict, source_alerts: list[str],
     data = inject_source(case.source_fault)
     expected = oracle(data)
     original = oracle(baseline())
+    discrepancy = difference(expected, observed)
+    input_shift = difference(original, expected)
+    all_keys = set(expected) | set(observed)
+    absolute_delta = sum(abs((observed.get(k) or 0) - (expected.get(k) or 0))
+                         for k in all_keys)
     return {
         "case": case.name, "origin": case.origin, "source_fault": case.source_fault,
         "logic_fault": case.logic_fault, "contract": "commerce-v1",
         "expected": {f"{k[0]}|{k[1]}": v for k,v in expected.items()},
         "observed": {f"{k[0]}|{k[1]}": v for k,v in observed.items()},
-        "contract_difference": difference(expected, observed),
-        "source_baseline_difference": difference(original, expected),
+        "contract_difference": discrepancy,
+        "source_baseline_difference": input_shift,
+        "mismatched_gold_keys": len(discrepancy),
+        "absolute_synthetic_cents_difference": absolute_delta,
+        "net_synthetic_cents_difference": sum(observed.values()) - sum(expected.values()),
         "source_alerts": source_alerts,
         "output_alerts": output_alerts,
         "classification": classify(expected, observed, source_alerts, output_alerts, execution_error),
@@ -268,6 +276,25 @@ def summarize(results: list[dict]) -> dict:
         per_origin[item["origin"]][item["classification"]] += 1
     errors = counts["execution_failure"]
     evaluable = len(results) - errors
+    wrong = counts["detected_failure"] + counts["silent_corruption"]
+    logic_only = [item for item in results if item["origin"] == "transformation"
+                  and item["classification"] != "execution_failure"]
+    affected_logic = sum(bool(item["contract_difference"]) for item in logic_only)
+    scorecard = {
+        "denominator": "only the explicitly selected synthetic test cases",
+        "evaluable_cases": evaluable,
+        "correct_or_contained_case_pct": round(100 * (
+            counts["correct"] + counts["contained"]) / evaluable, 2) if evaluable else None,
+        "undetected_of_incorrect_output_pct": round(
+            100 * counts["silent_corruption"] / wrong, 2) if wrong else None,
+        "sql_only_mutants_exercised": len(logic_only),
+        "sql_only_mutants_changed_output": affected_logic,
+        "sql_only_mutant_effectiveness_pct": round(
+            100 * affected_logic / len(logic_only), 2) if logic_only else None,
+        "total_absolute_synthetic_cents_difference": sum(
+            item["absolute_synthetic_cents_difference"] for item in results
+            if "absolute_synthetic_cents_difference" in item),
+    }
     return {
         "schema_version": 1, "evidence_level": "executed_dbt_duckdb",
         "workload": "three-source-order-customer-payment", "contract": "commerce-v1",
@@ -275,7 +302,8 @@ def summarize(results: list[dict]) -> dict:
         "per_origin": {key: dict(sorted(value.items())) for key,value in sorted(per_origin.items())},
         "interactions": interaction_effects(results),
         "evaluated": evaluable, "execution_errors": errors,
-        "cases": len(results), "silent_failures": counts["silent_corruption"],
+        "cases": len(results), "scorecard": scorecard,
+        "silent_failures": counts["silent_corruption"],
         "correct_or_contained": counts["correct"] + counts["contained"],
         "interpretation": "Synthetic case outcomes only; not production reliability estimates."
     }

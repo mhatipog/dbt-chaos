@@ -89,6 +89,16 @@ class CommerceTests(unittest.TestCase):
         combo=assess(CommerceCase("missing_refund","ignore_refunds"),admitted,[],[])
         relations=interaction_effects([src,sql,combo])
         self.assertEqual("masked_corruption",relations[0]["interaction"])
+    def test_scorecard_tracks_mismatch_detection_and_amount(self):
+        case=CommerceCase(logic_fault="ignore_refunds")
+        observed=dict(oracle(baseline()))
+        observed[("2026-02-01","retail")]+=2000
+        result=assess(case,observed,[],[])
+        self.assertEqual(2000,result["absolute_synthetic_cents_difference"])
+        self.assertEqual(2000,result["net_synthetic_cents_difference"])
+        score=summarize([result])["scorecard"]
+        self.assertEqual(1,score["sql_only_mutants_changed_output"])
+        self.assertEqual(100,score["undetected_of_incorrect_output_pct"])
     def test_fixture_isolation(self):
         inject_source("duplicate_customer")
         self.assertEqual(3,len(baseline()["customers"]))
