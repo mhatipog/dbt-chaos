@@ -29,11 +29,11 @@ where 1 = 1
     and latest.arrival_seq > (select coalesce(max(arrival_seq), 0) from {{ this }})
   {% elif strategy == 'cdc' %}
     and not exists (
-      select 1 from {{ this }} current
-      where current.order_id = latest.order_id
+      select 1 from {{ this }} tgt
+      where tgt.order_id = latest.order_id
         and (
-          current.source_version > latest.source_version
-          or (current.source_version = latest.source_version and current.event_id >= latest.event_id)
+          tgt.source_version > latest.source_version
+          or (tgt.source_version = latest.source_version and tgt.event_id >= latest.event_id)
         )
     )
   {% elif strategy == 'full' %}
