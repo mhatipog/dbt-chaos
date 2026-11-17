@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dbt-chaos"
+version = "0.2.0"
+description = "Data chaos generation, reproducible execution and resilience scoring"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+authors = [{name = "Vecture"}]
+dependencies = []
+
+[project.scripts]
+dbt-chaos = "dbt_chaos.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["dbt_chaos*"]
