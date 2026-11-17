@@ -1,0 +1,19 @@
+chaos_lab:
+  target: candidate
+  outputs:
+    candidate:
+      type: duckdb
+      path: "{{ env_var('CHAOS_DB') }}"
+      schema: candidate
+      threads: 1
+      settings:
+        memory_limit: '2GB'
+        threads: 1
+    reference:
+      type: duckdb
+      path: "{{ env_var('CHAOS_DB') }}"
+      schema: reference
+      threads: 1
+      settings:
+        memory_limit: '2GB'
+        threads: 1
