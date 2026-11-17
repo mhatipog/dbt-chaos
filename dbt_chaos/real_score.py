@@ -77,3 +77,29 @@ def run_campaign(plans,strategies,max_executions=12,time_budget_seconds=900):
     report=summarize_real(observations)
     report["elapsed_campaign_seconds"]=round(monotonic()-start,3)
     return report
+
+def merge_reports(reports:list[dict])->dict:
+    """Combine independent shard observations with strict provenance and deduplication."""
+    if not reports: raise ValueError("missing score shards")
+    observations=[]
+    seen=set()
+    shas=set()
+    for report in reports:
+        if report.get("evidence_level")!="executed_dbt_duckdb" or report.get("schema_version")!=1:
+            raise ValueError("cannot merge model screens with executed dbt evidence")
+        sha=report.get("git_sha")
+        if sha:shas.add(sha)
+        for entry in report.get("observations",[]):
+            key=(entry.get("plan"),entry.get("strategy"))
+            if not all(isinstance(v,str) for v in key):
+                raise ValueError("invalid shard observation identity")
+            if key in seen:
+                raise ValueError("duplicate strategy/plan observation in benchmark shards")
+            seen.add(key)
+            observations.append(entry)
+    if len(shas)>1:
+        raise ValueError("cannot compare shards built from different commit SHAs")
+    aggregate=summarize_real(observations)
+    aggregate["shards_merged"]=len(reports)
+    aggregate["git_sha"]=next(iter(shas)) if shas else None
+    return aggregate

@@ -1,5 +1,5 @@
 import unittest
-from dbt_chaos.real_score import summarize_real
+from dbt_chaos.real_score import summarize_real,merge_reports
 
 class ScoreTests(unittest.TestCase):
     def test_exclude_baseline_and_execution_errors(self):
@@ -14,6 +14,20 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(report["silent_corruption"],1)
         self.assertEqual(report["score_0_100"],0)
         self.assertEqual(report["execution_errors"],1)
+    def test_merge_strict_provenance(self):
+        def shard(name):
+            return {"evidence_level":"executed_dbt_duckdb","schema_version":1,
+                    "git_sha":"a"*40,"observations":[
+                        {"plan":name,"strategy":"strict","checkpoints":[
+                            {"label":"late","mismatch":True,"silent":True,"alerts":[],
+                             "delta":{"missing":{"3":[1,100]},"extra":{},"changed":{}}}]}]}
+        joined=merge_reports([shard("one"),shard("two")])
+        self.assertEqual(joined["shards_merged"],2)
+        self.assertEqual(joined["strategies"]["strict"]["silent_corruption"],2)
+        with self.assertRaises(ValueError):
+            merge_reports([shard("one"),shard("one")])
+        with self.assertRaises(ValueError):
+            merge_reports([shard("one"),{"evidence_level":"python_model_screen","schema_version":1,"observations":[]}])
     def test_alerted_incorrect_counted_detected(self):
         result={"strategy":"cdc","checkpoints":[
             {"label":"late","mismatch":True,"silent":False,"alerts":["contract_error"],"delta":{"missing":{"3":[1,100]},"extra":{},"changed":{}}}]}

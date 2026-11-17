@@ -44,7 +44,20 @@ def main(argv=None):
     rp=cmd.add_parser("report",help="Render a local, self-contained HTML evidence report")
     rp.add_argument("file",type=Path)
     rp.add_argument("--out",type=Path,required=True)
+    merge=cmd.add_parser("merge-dbt",help="Aggregate validated real dbt evidence shards")
+    merge.add_argument("files",type=Path,nargs="+")
+    merge.add_argument("--out",type=Path,required=True)
     args=parser.parse_args(argv)
+    if args.command=="merge-dbt":
+        from .real_score import merge_reports
+        shards=[]
+        for file in args.files:
+            if file.stat().st_size>10_000_000:parser.error("shard file too large")
+            shards.append(json.loads(file.read_text(encoding="utf8")))
+        report=merge_reports(shards)
+        args.out.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf8")
+        print("Merged",len(shards),"executed dbt score shards into",args.out)
+        return int(any(s["execution_errors"] for s in report["strategies"].values()))
     if args.command=="report":
         from .report import load_and_render
         args.out.write_text(load_and_render(args.file),encoding="utf8")
