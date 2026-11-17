@@ -36,6 +36,7 @@ def main(argv=None):
     rb=cmd.add_parser("bench-dbt",help="Run bounded actual dbt/DuckDB strategy comparison")
     rb.add_argument("--seed",type=int,default=42)
     rb.add_argument("--count",type=int,default=3)
+    rb.add_argument("--start",type=int,default=0,help="Zero-based scenario index for CI sharding")
     rb.add_argument("--strategies",default="strict,offset,full")
     rb.add_argument("--max-executions",type=int,default=12)
     rb.add_argument("--time-budget",type=int,default=900)
@@ -46,7 +47,10 @@ def main(argv=None):
         choices=tuple(args.strategies.split(","))
         if not choices or any(s not in STRATEGIES for s in choices) or len(set(choices))!=len(choices):
             parser.error("strategies must be a distinct subset of "+",".join(STRATEGIES))
-        report=run_campaign(generate(args.seed,args.count),choices,
+        if args.start<0 or args.start+args.count>10_000:
+            parser.error("scenario slice outside supported range")
+        plans=generate(args.seed,args.start+args.count)[args.start:]
+        report=run_campaign(plans,choices,
                             args.max_executions,args.time_budget)
         args.out.write_text(json.dumps(report,indent=2,sort_keys=True)+"\n",encoding="utf8")
         for name,score in report["strategies"].items():
