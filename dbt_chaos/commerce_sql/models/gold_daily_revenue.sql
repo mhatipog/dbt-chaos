@@ -2,7 +2,7 @@
 {% set f = var('logic_fault', 'none') %}
 with payment_totals as (
   select order_id, sum(
-    case when kind = 'capture' then amount_cents
+    case when kind = 'capture' then {% if f == 'invert_capture_sign' %}-amount_cents{% else %}amount_cents{% endif %}
     when kind = 'refund' then {% if f == 'ignore_refunds' %}0{% else %}-amount_cents{% endif %}
     else 0 end
   ) as net_cents

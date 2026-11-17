@@ -18,7 +18,7 @@ It compares daily net EUR revenue with an independent Python business contract.
 
 Source chaos covers duplicates, orphan customers, invalid payments, wrong
 currency, cancellations, version changes, missing refunds and split captures.
-SQL chaos covers missing deduplication, wrong joins, ignored refunds,
+SQL chaos covers missing deduplication, wrong joins, sign reversals, ignored refunds,
 omitted filters and incorrect aggregation grain. Pair cases test interactions.
 
 The output explicitly distinguishes correct, contained, detected_failure,

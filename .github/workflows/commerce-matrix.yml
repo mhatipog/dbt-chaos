@@ -32,10 +32,11 @@ jobs:
           print('By origin:',json.dumps(report['per_origin'],sort_keys=True))
           print('Interactions:',json.dumps(report['interactions'],sort_keys=True))
           assert len(report['interactions'])==7
-          assert report['cases']==29
+          assert report['cases']==30
           assert report['execution_errors']==0
           assert report['outcomes'].get('silent_corruption',0)>0
           assert report['outcomes'].get('contained',0)>0
+          assert report['outcomes'].get('detected_failure',0)>0
           for row in report['results']:
               print(row['case'],row['classification'],
                     'gold-diff-keys',len(row['contract_difference']))

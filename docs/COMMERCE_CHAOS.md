@@ -33,11 +33,11 @@ DuckDB database. It runs dbt source-quality tests and gold-output tests.
 | SQL: dedup | skip_customer_dedup, skip_payment_dedup |
 | SQL: joins | wrong_payment_join, wrong_customer_join |
 | SQL: filters | include_cancelled, ignore_currency |
-| SQL: arithmetic | ignore_refunds |
+| SQL: arithmetic | ignore_refunds, invert_capture_sign (detected by negative-revenue test) |
 | SQL: aggregation | wrong_grain |
 
-There are 13 source mutants, 8 SQL mutants, seven targeted combinations, and
-one clean control: 29 representative cases. Additional Cartesian combinations
+There are 13 source mutants, 9 SQL mutants, seven targeted combinations, and
+one clean control: 30 representative cases. Additional Cartesian combinations
 can be selected using the library API. A missing refund is intentionally an
 *unobservable source omission* under the admitted-data-only contract: detecting
 it requires an independently reconciled external source or expected delivery

@@ -20,7 +20,7 @@ SOURCE_FAULTS = (
 )
 LOGIC_FAULTS = (
     "none", "skip_customer_dedup", "skip_payment_dedup",
-    "ignore_refunds", "wrong_payment_join", "include_cancelled",
+    "ignore_refunds", "invert_capture_sign", "wrong_payment_join", "include_cancelled",
     "ignore_currency", "wrong_customer_join", "wrong_grain",
 )
 PAIR_PROBES = (

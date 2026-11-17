@@ -27,6 +27,10 @@ class CommerceActualDbtTests(unittest.TestCase):
         self.assertEqual("silent_corruption",r["classification"])
         self.assertIn("source_duplicate_customers",r["source_alerts"])
 
+    def test_sign_reversal_is_detected_by_gold_test(self):
+        r=run_case(CommerceCase(logic_fault="invert_capture_sign"))
+        self.assertEqual("detected_failure",r["classification"])
+        self.assertTrue(r["output_alerts"])
     def test_invalid_payment_quarantined(self):
         r=run_case(CommerceCase("null_payment"))
         self.assertEqual("contained",r["classification"])
