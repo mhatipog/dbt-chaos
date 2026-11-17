@@ -1,9 +1,11 @@
 """Actual dbt integration tests. Only run in the explicitly dependency-installed real workflow."""
 import unittest
+import importlib.util
 from dbt_chaos.core import DOMAINS
 from dbt_chaos.faults import generate
 from dbt_chaos.dbt_runner import run_real
 
+@unittest.skipUnless(importlib.util.find_spec('duckdb') is not None, 'optional dbt/DuckDB dependencies not installed')
 class RealDbtTests(unittest.TestCase):
     def test_late_arrival_strict_silent(self):
         p=generate(count=2)[1]
