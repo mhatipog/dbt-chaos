@@ -20,6 +20,11 @@ class CoreTests(unittest.TestCase):
         self.assertEqual([p.dumps() for p in a],[p.dumps() for p in b])
         for plan in a:
             self.assertEqual(plan,Plan.from_dict(json.loads(plan.dumps())))
+    def test_checkpoint_requires_run_after_delivery(self):
+        p=generate(count=2)[1]
+        bad=p.steps[:4]+p.steps[5:]
+        with self.assertRaises(ValueError):
+            replace(p,steps=bad)
     def test_idempotent_cdc_oracle(self):
         a=Event("a",1,1,10,100)
         delete=Event("del",1,2,1,None,"delete")

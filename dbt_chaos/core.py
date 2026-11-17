@@ -86,9 +86,16 @@ class Plan:
         if self.steps[-1].kind!="check" or self.steps[0].kind!="deliver":
             raise ValueError("plan must begin with a delivery and end with a check")
         ran=False
+        pending_delivery=False
         for s in self.steps:
-            if s.kind=="run": ran=True
-            if s.kind=="check" and not ran: raise ValueError("check before first run")
+            if s.kind=="deliver" and s.events:
+                pending_delivery=True
+            elif s.kind=="run":
+                ran=True
+                pending_delivery=False
+            elif s.kind=="check":
+                if not ran:raise ValueError("check before first run")
+                if pending_delivery:raise ValueError("cannot inspect changed inputs without running the pipeline")
 
     def to_dict(self):
         return asdict(self)

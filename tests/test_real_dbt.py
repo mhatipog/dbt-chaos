@@ -4,6 +4,7 @@ import importlib.util
 from dbt_chaos.core import DOMAINS
 from dbt_chaos.faults import generate
 from dbt_chaos.dbt_runner import run_real
+from dbt_chaos.shrink import reduce_plan
 
 @unittest.skipUnless(importlib.util.find_spec('duckdb') is not None, 'optional dbt/DuckDB dependencies not installed')
 class RealDbtTests(unittest.TestCase):
@@ -40,6 +41,13 @@ class RealDbtTests(unittest.TestCase):
         p=generate(count=len(DOMAINS))[list(DOMAINS).index("future_poison")]
         result=run_real(p,"strict")
         self.assertTrue(result["silent_corruption"])
+    def test_reduced_failure_confirms_real_dbt(self):
+        original=generate(count=2)[1]
+        reduced=reduce_plan(original,"strict")["plan"]
+        self.assertLess(len(reduced.dumps()),len(original.dumps()))
+        result=run_real(reduced,"strict")
+        self.assertTrue(result["silent_corruption"])
+        self.assertTrue(any(step.kind=="run" for step in reduced.steps[2:]))
     def test_negative_amount_detected(self):
         p=generate(count=len(DOMAINS))[list(DOMAINS).index("negative_amount")]
         result=run_real(p,"strict")
