@@ -23,6 +23,23 @@ class RealDbtTests(unittest.TestCase):
         result=run_real(p,"offset")
         self.assertTrue(result["final_correct"])
         self.assertFalse(result["silent_corruption"])
+    def test_timestamp_collision_inclusive_correct(self):
+        p=generate(count=3)[2]
+        result=run_real(p,"inclusive")
+        self.assertTrue(result["final_correct"])
+        self.assertFalse(result["silent_corruption"])
+    def test_late_arrival_wide_lookback_correct(self):
+        p=generate(count=2)[1]
+        result=run_real(p,"lookback",lookback=100)
+        self.assertTrue(result["final_correct"])
+    def test_delete_tombstone_cdc_correct(self):
+        p=generate(count=len(DOMAINS))[list(DOMAINS).index("tombstone")]
+        result=run_real(p,"cdc")
+        self.assertTrue(result["final_correct"])
+    def test_future_watermark_poisoning_strict(self):
+        p=generate(count=len(DOMAINS))[list(DOMAINS).index("future_poison")]
+        result=run_real(p,"strict")
+        self.assertTrue(result["silent_corruption"])
     def test_negative_amount_detected(self):
         p=generate(count=len(DOMAINS))[list(DOMAINS).index("negative_amount")]
         result=run_real(p,"strict")
