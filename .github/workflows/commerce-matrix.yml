@@ -30,6 +30,8 @@ jobs:
           print('Cases:',report['cases'])
           print('Outcomes:',json.dumps(report['outcomes'],sort_keys=True))
           print('By origin:',json.dumps(report['per_origin'],sort_keys=True))
+          print('Interactions:',json.dumps(report['interactions'],sort_keys=True))
+          assert len(report['interactions'])==7
           assert report['cases']==29
           assert report['execution_errors']==0
           assert report['outcomes'].get('silent_corruption',0)>0

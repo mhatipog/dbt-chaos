@@ -225,6 +225,42 @@ def assess(case: CommerceCase, observed: dict, source_alerts: list[str],
         "notable": "All counts and amounts are synthetic; source inputs may legitimately change contract truth."
     }
 
+def interaction_effects(results: list[dict]) -> list[dict]:
+    """Compare each combined fault with both relevant single-fault controls.
+
+    A combined case is only attributable when all three observations completed.
+    This distinguishes emergent defects and masking from ordinary survivors.
+    """
+    index = {(item["source_fault"], item["logic_fault"]): item for item in results}
+    effects = []
+    for source, logic in PAIR_PROBES:
+        left = index.get((source, "none"))
+        right = index.get(("none", logic))
+        combined = index.get((source, logic))
+        if not left or not right or not combined:
+            continue
+        if any(item["classification"] == "execution_failure"
+               for item in (left, right, combined)):
+            relation = "not_evaluable"
+        else:
+            bad_src = bool(left["contract_difference"])
+            bad_sql = bool(right["contract_difference"])
+            bad_both = bool(combined["contract_difference"])
+            if bad_both and not (bad_src or bad_sql):
+                relation = "emergent_corruption"
+            elif not bad_both and (bad_src or bad_sql):
+                relation = "masked_corruption"
+            elif bad_both:
+                relation = "persistent_corruption"
+            else:
+                relation = "no_output_divergence"
+        effects.append({
+            "source_fault": source, "logic_fault": logic,
+            "source_only": left["classification"], "logic_only": right["classification"],
+            "combined": combined["classification"], "interaction": relation
+        })
+    return effects
+
 def summarize(results: list[dict]) -> dict:
     counts = Counter(item["classification"] for item in results)
     per_origin: dict[str, Counter] = defaultdict(Counter)
@@ -237,6 +273,7 @@ def summarize(results: list[dict]) -> dict:
         "workload": "three-source-order-customer-payment", "contract": "commerce-v1",
         "outcomes": dict(sorted(counts.items())),
         "per_origin": {key: dict(sorted(value.items())) for key,value in sorted(per_origin.items())},
+        "interactions": interaction_effects(results),
         "evaluated": evaluable, "execution_errors": errors,
         "cases": len(results), "silent_failures": counts["silent_corruption"],
         "correct_or_contained": counts["correct"] + counts["contained"],

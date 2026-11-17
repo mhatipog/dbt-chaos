@@ -1,7 +1,7 @@
 import unittest
 from dbt_chaos.commerce import (
  CommerceCase,SOURCE_FAULTS,LOGIC_FAULTS,PAIR_PROBES,baseline,
- inject_source,oracle,source_contract_alerts,classify,cases,assess,summarize,
+ inject_source,oracle,source_contract_alerts,classify,cases,assess,summarize,interaction_effects,
 )
 
 class CommerceTests(unittest.TestCase):
@@ -68,6 +68,27 @@ class CommerceTests(unittest.TestCase):
         self.assertEqual("combined",result["origin"])
         self.assertEqual({"correct":1},summarize([result])["outcomes"])
 
+    def test_interaction_attribution_keeps_controls(self):
+        src=CommerceCase("duplicate_customer")
+        sql=CommerceCase(logic_fault="skip_customer_dedup")
+        combo=CommerceCase("duplicate_customer","skip_customer_dedup")
+        ref=oracle(inject_source("duplicate_customer"))
+        wrong=dict(ref)
+        wrong[("2026-02-01","retail")]+=10000
+        results=[
+            assess(src,ref,["source_duplicate_customers"],[]),
+            assess(sql,oracle(baseline()),[],[]),
+            assess(combo,wrong,["source_duplicate_customers"],[]),
+        ]
+        self.assertEqual("emergent_corruption",interaction_effects(results)[0]["interaction"])
+        base=oracle(baseline())
+        admitted=oracle(inject_source("missing_refund"))
+        src=assess(CommerceCase("missing_refund"),admitted,[],[])
+        bad=dict(base);bad[("2026-02-01","retail")]+=2000
+        sql=assess(CommerceCase(logic_fault="ignore_refunds"),bad,[],[])
+        combo=assess(CommerceCase("missing_refund","ignore_refunds"),admitted,[],[])
+        relations=interaction_effects([src,sql,combo])
+        self.assertEqual("masked_corruption",relations[0]["interaction"])
     def test_fixture_isolation(self):
         inject_source("duplicate_customer")
         self.assertEqual(3,len(baseline()["customers"]))
