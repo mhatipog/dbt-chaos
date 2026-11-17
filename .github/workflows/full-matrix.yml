@@ -1,0 +1,46 @@
+name: Full fault x architecture matrix (actual dbt)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/full-matrix.yml'
+permissions:
+  contents: read
+concurrency:
+  group: dbt-chaos-full-matrix
+  cancel-in-progress: false
+jobs:
+  shard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        start: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned real dbt / DuckDB
+        run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - name: Run 2 synthetic scenarios across 6 dbt strategies
+        run: |
+          python -m dbt_chaos bench-dbt --seed 20261117 --start ${{ matrix.start }} --count 2 --strategies strict,inclusive,lookback,offset,cdc,full --max-executions 12 --time-budget 900 --out /tmp/shard.json
+          python -c "import json; p=json.load(open('/tmp/shard.json')); print(json.dumps({'evidence_level':p['evidence_level'],'strategies':p['strategies']},indent=2))"
+      - name: Compact run summary (no artifacts stored)
+        if: success()
+        run: |
+          python - <<'PY'
+          import json,os
+          p=json.load(open('/tmp/shard.json'))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## Real dbt synthetic benchmark shard\n\n')
+              f.write('| Strategy | Correct | Silent | Score | Errors |\n|---|---:|---:|---:|---:|\n')
+              for name,r in p['strategies'].items():
+                  f.write(f'| {name} | {r["fault_checkpoints"]-r["incorrect"]}/{r["fault_checkpoints"]} | {r["silent_corruption"]} | {r["score_0_100"]} | {r["execution_errors"]} |\n')
+              f.write('\nSynthetic only; scores are workload-specific. No real customer data.\n')
+          PY
