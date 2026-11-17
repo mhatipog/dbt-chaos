@@ -20,3 +20,6 @@ dbt-chaos = "dbt_chaos.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["dbt_chaos*"]
+
+[tool.setuptools.package-data]
+"dbt_chaos" = ["sql/*.yml", "sql/models/*.sql", "sql/models/*.yml", "sql/tests/*.sql"]
