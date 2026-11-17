@@ -2,6 +2,7 @@
 from collections import defaultdict
 from .core import DOMAINS,STRATEGIES,screen
 from .faults import coverage
+from .impact import impact
 
 def evaluate(plans,strategies=STRATEGIES,lookback=10):
     data=defaultdict(list)
@@ -27,6 +28,8 @@ def evaluate(plans,strategies=STRATEGIES,lookback=10):
                         domains[domain][1]+=int(p["silent"])
         report[model]={
             "cases":len(runs),"fault_checkpoints":n,
+            "affected_key_checkpoints":sum(impact(p["delta"])["affected_keys"] for p in points),
+            "absolute_synthetic_cents_exposure":sum(impact(p["delta"])["absolute_cents_exposure"] for p in points),
             "incorrect":wrong,"correct_checkpoints":n-wrong,
             "correctness_pct":round(100*(n-wrong)/n,2),
             "silent_corruption":silent,"detected_by_basic_tests":detected,

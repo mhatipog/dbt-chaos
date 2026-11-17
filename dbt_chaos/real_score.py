@@ -5,6 +5,7 @@ from collections import defaultdict
 from time import monotonic
 import os
 from .core import DOMAINS
+from .impact import impact
 
 def summarize_real(observations):
     by_model=defaultdict(list)
@@ -29,7 +30,11 @@ def summarize_real(observations):
         models[strategy]={
             "planned_runs":len(items),"executed_runs":len(valid),
             "execution_errors":len(items)-len(valid),"fault_checkpoints":num,
-            "incorrect":incorrect,"silent_corruption":silent,
+            "incorrect":incorrect,
+            "correctness_pct":round(100*(num-incorrect)/num,2) if num else None,
+            "affected_key_checkpoints":sum(impact(p["delta"])["affected_keys"] for p in points),
+            "absolute_synthetic_cents_exposure":sum(impact(p["delta"])["absolute_cents_exposure"] for p in points),
+            "silent_corruption":silent,
             "detected_corruption":detected,"quality_alerts":quality_alerts,
             "score_0_100":round(100*(num-silent)/num,2) if num else None,
             "total_elapsed_seconds":round(sum(i.get("elapsed_seconds",0) for i in valid),3),

@@ -7,6 +7,7 @@ from dbt_chaos.core import Event,Plan,Step,STRATEGIES,DOMAINS,PLANNED,oracle,liv
 from dbt_chaos.faults import generate,coverage
 from dbt_chaos.score import evaluate
 from dbt_chaos.shrink import reduce_plan
+from dbt_chaos.impact import impact
 
 class CoreTests(unittest.TestCase):
     def test_catalog_complete_and_honest(self):
@@ -64,6 +65,10 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(0,score["strategies"]["full"]["silent_corruption"])
         self.assertLess(score["strategies"]["strict"]["score_0_100"],100)
         self.assertEqual(100,score["strategies"]["full"]["score_0_100"])
+    def test_synthetic_impact_accounting(self):
+        d={"missing":{1:(1,100)},"extra":{2:(2,250)},
+           "changed":{3:{"expected":(1,500),"actual":(2,450)}}}
+        self.assertEqual({"affected_keys":3,"absolute_cents_exposure":400},impact(d))
     def test_pairwise_generation_coverage(self):
         plans=generate(seed=112,count=210,max_faults=2)
         result=coverage(plans)
