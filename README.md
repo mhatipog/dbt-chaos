@@ -4,6 +4,13 @@
 
 Status: experimental v0.2. The framework is synthetic-only and makes no claim to exercise every possible real-world fault.
 
+## Verified results
+
+On 17 November 2026, **120 actual dbt/DuckDB experiments** completed on public GitHub-hosted runners: 20 synthetic individual faults × 6 strategies, without infrastructure errors. Correct scenarios: full refresh 20/20, source-version CDC 20/20, ingestion-offset 20/20, rolling lookback 17/20, inclusive watermark 15/20, strict watermark 13/20. Incorrect results escaped the four basic dbt tests. The 20/20 outcomes are limited to this suite, not general reliability guarantees.
+
+[Full evidence and caveats](docs/RESULTS.md) · [Machine-readable aggregate](docs/results/full-matrix-2026-11-17.json) · [Public 120-test run](https://github.com/mhatipog/dbt-chaos/actions/runs/44039321822)
+
+
 ## What is actually implemented?
 
 - A versioned, seed-independent JSON replay format with event IDs, source versions, logical timestamps, amounts in integer cents, and CDC tombstones.
