@@ -48,6 +48,19 @@ def _check_fields(obj: Any, keys: set[str], where: str) -> dict:
     return obj
 
 
+def load_contract(path_or_builtin: Path | str) -> dict:
+    """Read a JSON contract or one of the packaged built-in examples."""
+    name = str(path_or_builtin)
+    if name in ("procurement", "grants"):
+        from importlib.resources import files
+        resource = files("dbt_chaos").joinpath("contracts", name + ".json")
+        return validate_contract(json.loads(resource.read_text(encoding="utf8")))
+    path = Path(path_or_builtin)
+    if not path.is_file() or path.stat().st_size > 64_000:
+        raise ValueError("contract must be an existing bounded JSON path or built-in name")
+    return validate_contract(json.loads(path.read_text(encoding="utf8")))
+
+
 def validate_contract(raw: Any) -> dict:
     _check_fields(raw, {"format", "name", "roles", "semantics", "generation"},
                   "contract")
@@ -449,7 +462,7 @@ def export_contract_challenge(*, contract_path: Path, seed: int, fault: str,
     if any(path.exists() and (not path.is_dir() or any(path.iterdir()))
            for path in (public_dir, private_dir)):
         raise ValueError("output directories must be empty")
-    contract = validate_contract(json.loads(contract_path.read_text(encoding="utf8")))
+    contract = load_contract(contract_path)
     events = simulate_process(contract, seed)
     clean = project_source(contract, events)
     chaos, fault_detail = apply_scripted_fault(contract, clean, events, fault)
