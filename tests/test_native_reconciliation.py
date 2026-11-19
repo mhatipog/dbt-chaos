@@ -96,6 +96,20 @@ class NativeReconciliationTests(unittest.TestCase):
         self.assertEqual(0, self.score(rec)["false_published_l1_cents"])
         self.assertGreater(len(rec["held_groups"]), 0)
 
+    def test_all_claimed_feeds_agree_on_wrong_value_is_information_limit(self):
+        rec, original = self.execute("all_claimed_feeds_agree_on_wrong_value")
+        self.assertEqual("published", rec["release_status"])
+        self.assertEqual(0, rec["dispute_count"])
+        self.assertEqual(0, rec["pending_count"])
+        self.assertEqual([], rec["held_groups"])
+        status = self.score(rec)
+        self.assertEqual("silently_wrong", status["status"])
+        self.assertEqual(2000, status["false_published_l1_cents"])
+        # This is not a fixable data-platform detection failure: all
+        # observations fed to SQL agree. The independently held oracle
+        # establishes the unobservable difference after execution only.
+        self.assertEqual([], original["source_alerts"])
+
     def test_legitimate_evidence_lateness_causes_pending_not_dispute(self):
         for name in ("clean_before_settlement", "clean_after_provider_before_bank"):
             with self.subTest(name=name):
