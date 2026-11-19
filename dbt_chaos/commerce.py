@@ -206,10 +206,12 @@ def classify(expected: dict, actual: dict, source_alerts: list[str],
     return "correct"
 
 def assess(case: CommerceCase, observed: dict, source_alerts: list[str],
-           output_alerts: list[str], execution_error: str | None = None) -> dict:
-    data = inject_source(case.source_fault)
+           output_alerts: list[str], execution_error: str | None = None,
+           *, admitted_data: dict | None = None, process_data: dict | None = None) -> dict:
+    """Evaluate admitted source truth separately from optional process-ledger truth."""
+    data = inject_source(case.source_fault) if admitted_data is None else deepcopy(admitted_data)
     expected = oracle(data)
-    original = oracle(baseline())
+    original = oracle(baseline() if process_data is None else process_data)
     discrepancy = difference(expected, observed)
     input_shift = difference(original, expected)
     all_keys = set(expected) | set(observed)
@@ -222,6 +224,8 @@ def assess(case: CommerceCase, observed: dict, source_alerts: list[str],
         "observed": {f"{k[0]}|{k[1]}": v for k,v in observed.items()},
         "contract_difference": discrepancy,
         "source_baseline_difference": input_shift,
+        "process_truth_difference": (difference(original, observed)
+                                     if process_data is not None and not execution_error else None),
         "mismatched_gold_keys": len(discrepancy),
         "absolute_synthetic_cents_difference": absolute_delta,
         "net_synthetic_cents_difference": sum(observed.values()) - sum(expected.values()),
