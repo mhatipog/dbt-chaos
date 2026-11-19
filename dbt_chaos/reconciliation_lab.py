@@ -222,8 +222,26 @@ def score_scenario(*, public_dir: Path, answer_key: Path,
         for k in (set(actual)|set(admitted))-held_keys
     )
     observable = key["reference_detectability"]
+    source_l1 = sum(abs(expected.get(k,0)-admitted.get(k,0))
+                    for k in set(expected)|set(admitted))
+    detectability = (
+        "no_business_error" if source_l1==0 else
+        "observable_inconsistency" if observable["findings"] else
+        "not_yet_observable" if observable["status"]=="pending_evidence" else
+        "unobservable_with_provided_evidence"
+    )
+    platform_missed_detectable_error = (
+        detectability == "observable_inconsistency"
+        and bool(evaluated["false_published_groups"] or
+                 evaluated["silent_missing_groups"])
+    )
     return {
         "format": FORMAT, "challenge_id":manifest["challenge_id"],
+        "detectability_given_available_evidence": detectability,
+        "platform_published_error_despite_observable_dispute":
+            platform_missed_detectable_error,
+        "evidence_has_authenticated_independent_roots": False,
+        "source_vs_business_error_cents":source_l1,
         "scenario": manifest["scenario"],
         "native_external_platform_run": False,
         "actual_external_platform_output_scored": True,
