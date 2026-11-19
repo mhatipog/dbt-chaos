@@ -35,7 +35,7 @@ SOURCE_TEST_IDS={
 }
 
 def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
-             process_data:dict|None=None)->dict:
+             process_data:dict|None=None, quality_enabled:bool=False)->dict:
     try:
         import duckdb
     except ImportError as exc:
@@ -68,7 +68,8 @@ def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
             artifact.unlink(missing_ok=True)
             cmd=[str(Path(sys.executable).with_name("dbt")),command,
                  "--project-dir",str(project),"--profiles-dir",str(project),
-                 "--target","local","--vars",json.dumps({"logic_fault":case.logic_fault})]
+                 "--target","local","--vars",json.dumps({"logic_fault":case.logic_fault,
+                                                     "enable_quality_models":quality_enabled})]
             before=perf_counter()
             try:
                 proc=subprocess.run(cmd,cwd=project,env=env,text=True,
@@ -96,6 +97,37 @@ def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
             rows=db.execute(
                 "select order_day,segment,revenue_cents from analytics.gold_daily_revenue"
                 " order by order_day,segment").fetchall()
+            native_payload=None
+            if quality_enabled:
+                published=db.execute(
+                    "select order_day,segment,revenue_cents "
+                    "from analytics.quality_gold_published "
+                    "order by order_day,segment").fetchall()
+                quarantined=db.execute(
+                    "select row_id,payment_id,order_id,quarantine_reason "
+                    "from analytics.quality_quarantine_payments "
+                    "order by row_id").fetchall()
+                held=db.execute(
+                    "select order_day,segment from analytics.quality_held_groups "
+                    "order by order_day,segment").fetchall()
+                gate=db.execute(
+                    "select publication_status,quarantine_rows,global_risks,local_risks "
+                    "from analytics.quality_release_gate").fetchone()
+                if gate is None:
+                    raise RuntimeError("native quality gate produced no publication state")
+                native_payload={
+                    "release_status":gate[0],
+                    "quarantined_row_count":gate[1],
+                    "global_risk_count":gate[2],
+                    "local_risk_count":gate[3],
+                    "quarantine":[{"row_id":r[0],"payment_id":r[1],
+                                   "order_id":r[2],"reason":r[3]} for r in quarantined],
+                    "held_groups":[f"{day}|{seg}" for day,seg in held],
+                    "released_gold":{f"{day}|{seg}":int(cents)
+                                     for day,seg,cents in published},
+                    "models_executed_by_dbt":True,
+                    "implementation":"native_dbt_sql_opt_in",
+                }
 
     observed={}
     for day,segment,cents in rows:
@@ -117,6 +149,8 @@ def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
                   elapsed_seconds=round(perf_counter()-started,3),
                   model_statuses=models,test_count=len(tests),
                   source_contract_warnings=expected_alerts)
+    if quality_enabled:
+        result["native_quality"]=native_payload
     return result
 
 def run_matrix(selected:list[CommerceCase],max_cases:int=30)->dict:
