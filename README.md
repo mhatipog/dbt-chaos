@@ -41,6 +41,39 @@ dbt-chaos commerce-report commerce-results.json --out commerce.html
 The reference contract cannot infer missing source events without an external
 reconciliation feed. See docs/COMMERCE_CHAOS.md for the exact workload contract.
 
+## Experimental good-intentions LLM dataset corpus (research branch only)
+
+The `research/good-intentions-handoff-20261119` branch adds a bounded
+**process-first** data-generation experiment:
+
+- Generate an immutable synthetic commerce event ledger; expand it into
+  complete relational source CSVs with a separately computed gold oracle.
+- Give tiny, CPU-only, open-weights LLMs plausible operational tickets and
+  let them propose concrete source-cell edits, delivery changes or an
+  allowlisted SQL transformation choice.
+- Re-run actual dbt/DuckDB on every complete source snapshot, measure
+  signed and absolute **business** drift against the independent process
+  ledger, and record rejected/invalid model output without faking an edit.
+- Export complete reproducible datasets, manifests, hashes and model
+  responses; verify their provenance with
+  `python -m dbt_chaos.audit_corpus PATH`.
+
+The [first verified two-model run](https://github.com/mhatipog/dbt-chaos/actions/runs/44544592101)
+produced six full snapshots each for Qwen2.5-Coder-0.5B and SmolLM2-360M,
+plus a separate scripted three-snapshot calibration. In one Qwen trajectory,
+three model-authored source mistakes passed existing dbt tests but deviated
+from business-ledger truth. SmolLM mostly produced malformed instructions,
+safely rejected by the experiment.
+
+**Do not infer a population failure rate or a causal telephone-game effect
+from these single trajectories.** Neither model generated a valid initial
+process profile; the baseline event ledger came from our deterministic
+simulator, while the model-authored edits were genuinely executed.
+
+Details: [full dataset method](docs/FULL_DATASETS.md) ·
+[observed results](docs/FULL_DATASETS_RESULTS_20261119.md) ·
+[handoff research](docs/GOOD_INTENTIONS.md).
+
 ## What is actually implemented?
 
 - A versioned, seed-independent JSON replay format with event IDs, source versions, logical timestamps, amounts in integer cents, and CDC tombstones.
