@@ -95,6 +95,19 @@ class ReconciliationTests(unittest.TestCase):
             self.assertEqual("held", score["status"])
             self.assertEqual(0.0, score["fraction_of_correct_business_value_published"])
 
+    def test_intact_internal_journal_can_detect_early_without_proving_truth(self):
+        s = self.b["cases"]["qwen_internal_gl_detects_early"]
+        rec = reconcile(s["source"], s["evidence"], as_of_lag_days=0)
+        self.assertEqual("disputed", rec["status"])
+        self.assertIn("correlated_internal_gl_mismatch",
+                      [x["code"] for x in rec["findings"]])
+        self.assertNotIn("provider_transaction_mismatch",
+                         [x["code"] for x in rec["findings"]])
+        self.assertEqual(0, rec["independent_external_root_count"])
+        # An internal discrepancy deserves a hold, but not an automatic
+        # conclusion about whether the GL or payment row is authoritative.
+        self.assertTrue(rec["held_groups"])
+
     def test_provider_missing_after_sla_is_dispute_not_uncertain_forever(self):
         s = self.b["cases"]["missing_provider_after_sla"]
         r = reconcile(s["source"], s["evidence"], as_of_lag_days=5)
@@ -145,7 +158,7 @@ class ReconciliationTests(unittest.TestCase):
         report = evaluate_scenarios()
         self.assertEqual("multisource_reconciliation_reference_v1",
                          report["experiment"])
-        self.assertEqual(8, len(report["cases"]))
+        self.assertEqual(9, len(report["cases"]))
         by_name = {r["scenario"]: r for r in report["cases"]}
         self.assertEqual("verified", by_name["clean_mature"]
                          ["reconciliation"]["status"])
