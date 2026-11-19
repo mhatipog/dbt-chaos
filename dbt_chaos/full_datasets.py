@@ -395,7 +395,16 @@ def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
     proposed_profile_raw = planner.design(seed) if model_design else ""
     profile, profile_accepted = (parse_profile(proposed_profile_raw, seed=seed)
                                  if model_design else (Profile(seed=seed), True))
-    events, truth = clean_dataset(profile)
+    fallback_reason = None
+    try:
+        events, truth = clean_dataset(profile)
+    except ValueError as exc:
+        if not model_design or not profile_accepted:
+            raise
+        fallback_reason = str(exc)
+        profile_accepted = False
+        profile = Profile(seed=seed)
+        events, truth = clean_dataset(profile)
     admitted = deepcopy(truth)
     rng = random.Random(seed ^ 0xC0FFEE)
     trajectory: list[dict] = []
@@ -461,6 +470,7 @@ def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
         "seed": seed, "context_mode": context_mode,
         "profile": profile, "profile_generated_by_model": model_design,
         "profile_accepted": profile_accepted,
+        "profile_fallback_reason": fallback_reason,
         "raw_profile_proposal": proposed_profile_raw[:1200],
         "events": events, "truth": truth, "ledger_gold": ledger_gold,
         "steps": trajectory, "datasets": datasets,
@@ -536,6 +546,7 @@ def export_corpus(corpus: dict, root: Path) -> dict:
         "profile": asdict(corpus["profile"]),
         "profile_generated_by_model": corpus["profile_generated_by_model"],
         "profile_accepted": corpus["profile_accepted"],
+        "profile_fallback_reason": corpus["profile_fallback_reason"],
         "raw_profile_proposal": corpus["raw_profile_proposal"],
         "disclaimer": corpus["disclaimer"],
         "steps": [without_tuple_keys(step) for step in corpus["steps"]],
@@ -545,6 +556,7 @@ def export_corpus(corpus: dict, root: Path) -> dict:
         "schema_version": 1, "experiment": trace["experiment"],
         "seed": corpus["seed"], "model": corpus["model"],
         "profile_accepted": corpus["profile_accepted"],
+        "profile_fallback_reason": corpus["profile_fallback_reason"],
         "event_count": len(events),
         "initial_rows": {k: len(v) for k, v in corpus["truth"].items()},
         "full_dataset_snapshots": len(corpus["datasets"]),
@@ -578,6 +590,7 @@ def main() -> None:
     manifest = export_corpus(corpus, args.output_dir)
     summary = {
         "model": corpus["model"], "profile_accepted": corpus["profile_accepted"],
+        "profile_fallback_reason": corpus["profile_fallback_reason"],
         "profile": asdict(corpus["profile"]), "events": len(corpus["events"]),
         "baseline_rows": manifest["initial_rows"], "snapshots": manifest["full_dataset_snapshots"],
         "edits": [step["edit_effect"] for step in corpus["steps"]],
