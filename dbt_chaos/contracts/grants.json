@@ -1,0 +1,52 @@
+{
+  "format": "dbt_chaos_declarative_process_v1",
+  "name": "grant_disbursements",
+  "roles": {
+    "party": {
+      "table": "beneficiaries",
+      "id": "beneficiary_id",
+      "dimension": "region"
+    },
+    "document": {
+      "table": "grant_awards",
+      "id": "award_id",
+      "party_fk": "beneficiary_id",
+      "date": "award_day",
+      "gross": "award_ceiling_cents",
+      "status": "award_status",
+      "currency": "currency"
+    },
+    "movement": {
+      "table": "disbursements",
+      "id": "disbursement_id",
+      "document_fk": "award_id",
+      "kind": "movement_kind",
+      "amount": "amount_cents"
+    }
+  },
+  "semantics": {
+    "included_status": "authorized",
+    "currency": "EUR",
+    "signs": {
+      "paid": 1,
+      "recovered": -1
+    },
+    "dimensions": [
+      "North",
+      "South",
+      "East",
+      "West"
+    ]
+  },
+  "generation": {
+    "parties": 32,
+    "documents": 180,
+    "history_percent": 18,
+    "approved_percent": 83,
+    "movement_percent": 93,
+    "credit_percent": 32,
+    "retry_percent": 8,
+    "start_day": "2026-03-01",
+    "day_span": 45
+  }
+}
