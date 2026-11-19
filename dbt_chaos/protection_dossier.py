@@ -69,9 +69,13 @@ def export_policy_dossier(matrix: dict, root: Path) -> dict:
             accepted = original
         base = f"cases/{case}/{policy}"
 
+        # If the policy withheld publication before running dbt, these are
+        # *candidate* tables, not evidence that the SQL was executed.
+        input_label = ("dbt_input" if entry["dbt_executed"] or
+                       entry["dbt_result_reused"] else "unexecuted_candidate_input")
         for table in ("customers", "orders", "payments"):
             rows = accepted[table]
-            write(f"{base}/dbt_input/{table}.csv",
+            write(f"{base}/{input_label}/{table}.csv",
                   _csv(COLUMNS[table], rows), rows=len(rows))
 
         quarantines = []
