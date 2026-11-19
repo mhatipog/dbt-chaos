@@ -5,15 +5,19 @@ on:
     branches: [research/good-intentions-handoff-20261119]
     paths:
       - 'dbt_chaos/process_contract.py'
+      - 'dbt_chaos/contract_sql.py'
       - 'contracts/**'
       - 'tests/test_process_contract.py'
+      - 'tests/test_contract_sql.py'
       - 'dbt_chaos/cli.py'
       - '.github/workflows/process-contract.yml'
   pull_request:
     paths:
       - 'dbt_chaos/process_contract.py'
+      - 'dbt_chaos/contract_sql.py'
       - 'contracts/**'
       - 'tests/test_process_contract.py'
+      - 'tests/test_contract_sql.py'
       - 'dbt_chaos/cli.py'
       - '.github/workflows/process-contract.yml'
   workflow_dispatch:
@@ -42,6 +46,7 @@ jobs:
         run: |
           python -m compileall -q dbt_chaos
           python -m unittest discover -s tests -p test_process_contract.py -v
+          python -m unittest discover -s tests -p test_contract_sql.py -v
       - name: All ten contract/fault combinations with public-input-only SQL
         run: |
           python - <<'PY'
@@ -93,6 +98,8 @@ jobs:
             --public-dir /tmp/contract-public --private-dir /tmp/contract-secret
           dbt-chaos contract-reference --public-dir /tmp/contract-public \
             --output-dir /tmp/contract-sql
+          dbt-chaos contract-probe --public-dir /tmp/contract-public \
+            --out /tmp/contract-probes.json
           dbt-chaos contract-score --public-dir /tmp/contract-public \
             --answer-key /tmp/contract-secret/answer_key.json \
             --published-dir /tmp/contract-sql \
@@ -104,6 +111,12 @@ jobs:
           assert result['results']['clean']['verdict']=='business_correct'
           assert result['results']['chaos']['verdict']=='garbage_passed_through'
           assert result['results']['chaos']['source_to_business_l1_cents']==2000
+          probes=json.loads(Path('/tmp/contract-probes.json').read_text())
+          assert probes['results']['clean']['block_count']==0
+          # The €20 credit edit is structurally valid; optional source-only
+          # SQL probes MUST NOT claim to know the original amount.
+          assert probes['results']['chaos']['block_count']==0
+          assert not probes['native_warehouse_tests_installed']
           assert not Path('/tmp/contract-public/answer_key.json').exists()
           assert not Path('/tmp/contract-public/process_events.jsonl').exists()
           print('Three CLI commands verified; private ledger never in public input.')
@@ -124,5 +137,6 @@ jobs:
           path: |
             /tmp/process-contract-bench/results.json
             /tmp/contract-score.json
+            /tmp/contract-probes.json
           retention-days: 2
           if-no-files-found: warn
