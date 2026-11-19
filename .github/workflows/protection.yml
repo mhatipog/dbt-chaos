@@ -41,7 +41,7 @@ jobs:
       - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
       - name: Verify observable rules and real dbt policy experiments
         run: python -m unittest discover -s tests -p test_protection.py -v
-      - name: Execute 4 matched source cases under 5 distinct protection policies
+      - name: Execute 5 matched source cases under 5 distinct protection policies
         run: |
           python -m dbt_chaos.protection --output /tmp/protection-matrix.json
       - name: Independently assert reporting correctness versus publication safety
@@ -50,8 +50,8 @@ jobs:
           import json
           r=json.load(open('/tmp/protection-matrix.json'))
           table={(x['scenario'],x['policy']):x for x in r['evaluations']}
-          assert len(table)==20
-          assert r['unique_real_dbt_executions']<=5
+          assert len(table)==25
+          assert r['unique_real_dbt_executions']<=6
           for policy in ['raw','monitor','quarantine','strict_gate','attested_replay']:
               x=table['clean_control',policy]
               assert x['verdict']=='business_correct',x
@@ -69,7 +69,14 @@ jobs:
           assert table['qwen_order_deleted','raw']['candidate_detector_findings']==[]
           assert table['qwen_order_deleted','monitor']['candidate_detector_findings']
           assert table['qwen_order_deleted','strict_gate']['quarantined_records']==0
-          print('VERIFIED: 20 policy/scenario results,',r['unique_real_dbt_executions'],
+          b='benign_exact_retry_control'
+          assert table[b,'raw']['verdict']=='business_correct'
+          assert table[b,'quarantine']['verdict']=='business_correct'
+          assert table[b,'quarantine']['quarantined_records']==1
+          assert table[b,'strict_gate']['verdict']=='withheld_all'
+          assert table[b,'strict_gate']['safe_truth_value_fraction']==0
+          assert table[b,'attested_replay']['verdict']=='evidence_recovered'
+          print('VERIFIED: 25 policy/scenario results,',r['unique_real_dbt_executions'],
                 'distinct real dbt executions, no unearned detection claims.')
           print('case, policy, verdict, bad groups, held groups, safe value fraction')
           for entry in r['evaluations']:
