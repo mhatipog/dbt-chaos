@@ -5,6 +5,7 @@ data. Never passes through external profiles, credentials or user-authored SQL.
 """
 from __future__ import annotations
 import json
+from copy import deepcopy
 import os
 from pathlib import Path
 import shutil
@@ -33,12 +34,13 @@ SOURCE_TEST_IDS={
  "invalid_payments":"source_invalid_payments",
 }
 
-def run_case(case:CommerceCase)->dict:
+def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
+             process_data:dict|None=None)->dict:
     try:
         import duckdb
     except ImportError as exc:
         raise RuntimeError("Install real dbt dependencies: pip install -e '.[dbt]'") from exc
-    data=inject_source(case.source_fault)
+    data=inject_source(case.source_fault) if admitted_data is None else deepcopy(admitted_data)
     expected_alerts=source_contract_alerts(data)
     started=perf_counter()
     with TemporaryDirectory(prefix="dbt-chaos-commerce-") as temp:
@@ -108,7 +110,8 @@ def run_case(case:CommerceCase)->dict:
                    if not any("."+test in node for test in SOURCE_TEST_IDS.values())]
     if set(source_alerts)!={SOURCE_TEST_IDS[tag] for tag in expected_alerts}:
         raise RuntimeError(f"Source test contract discrepancy: expected {expected_alerts}, got {source_alerts}")
-    result=assess(case,observed,source_alerts,output_alerts)
+    result=assess(case,observed,source_alerts,output_alerts,
+                  admitted_data=data,process_data=process_data)
     result.update(evidence_level="executed_dbt_duckdb", dbt_calls=2,
                   model_seconds=model_seconds,test_seconds=test_seconds,
                   elapsed_seconds=round(perf_counter()-started,3),
