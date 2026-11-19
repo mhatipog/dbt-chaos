@@ -317,6 +317,80 @@ def score_external_challenge(
     }
 
 
+def export_recorded_qwen_starter_challenge(*, public_dir: Path,
+                                           private_dir: Path) -> dict:
+    """One-command starter: replay a frozen real Qwen edit, NO inference or dbt.
+
+    The *original* model decision was captured by the verified real-Qwen
+    research run 44584273184. Here only that already-recorded typed action
+    is replayed into a fresh immutable synthetic event-process corpus.
+    """
+    from tempfile import TemporaryDirectory
+    from .full_datasets import (
+        Profile, build_corpus, clean_dataset, export_corpus,
+    )
+
+    class ArchivedQwenAction:
+        name = "recorded_qwen_refund_action_not_fresh_llm_inference"
+        model_sha256 = None
+
+        def edit(self, ticket, view):
+            return json.dumps({
+                "operation": "edit_cell",
+                "table": "payments",
+                "row_id": 30669,
+                "field": "amount_cents",
+                "value": 2900,
+                "note": (
+                    "Previously observed typed action; not a new model "
+                    "explanation or independent evidence."
+                ),
+            })
+
+    _, clean = clean_dataset(Profile(seed=20261119))
+    payment = next((p for p in clean["payments"]
+                    if p["row_id"] == 30669), None)
+    if payment is None or payment["amount_cents"] != 4900:
+        raise RuntimeError("the archived Qwen example no longer matches baseline")
+    order = next(o for o in clean["orders"]
+                 if o["order_id"] == payment["order_id"]
+                 and o["version"] == max(x["version"] for x in clean["orders"]
+                                         if x["order_id"] == o["order_id"]))
+    customer = next(c for c in clean["customers"]
+                    if c["customer_id"] == order["customer_id"]
+                    and c["version"] == max(x["version"] for x in clean["customers"]
+                                            if x["customer_id"] == c["customer_id"]))
+    ticket = {
+        "ticket_id": "reconciliation",
+        "message": (
+            "Finance is unsure whether a refund may be a retry. "
+            "Review the observed record without inventing new evidence."
+        ),
+        "exposed_rows": {
+            "customers": [customer], "orders": [order], "payments": [payment],
+        },
+    }
+    with TemporaryDirectory(prefix="dbt-chaos-starter-") as temp:
+        corpus = build_corpus(
+            planner=ArchivedQwenAction(), seed=20261119,
+            steps=1, model_design=False,
+            fixed_tickets=[ticket], execute_dbt=False)
+        assert len(corpus["steps"]) == 1
+        assert corpus["steps"][0]["edit_effect"] == "source_cell_rewritten"
+        assert corpus["steps"][0]["source_absolute_error_cents"] == 2000
+        path = Path(temp) / "corpus"
+        export_corpus(corpus, path)
+        result = export_external_challenge(
+            corpus=path, public_dir=public_dir,
+            private_dir=private_dir, step=1)
+    result["starter_provenance"] = (
+        "One recorded Qwen2.5-Coder-0.5B accepted refund edit from real "
+        "GitHub Actions run 44584273184, deliberately replayed without "
+        "running a new model. This starter is not a 20-step model study."
+    )
+    return result
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Export or score vendor-neutral commerce chaos challenge")
     cmd = ap.add_subparsers(dest="command", required=True)
