@@ -62,6 +62,22 @@ history. The generator **rejected that design** as inadequate for the
 version-history experiment and recorded the fallback reason. It did not
 silently claim to have used Qwen's proposed profile.
 
+### Important correction: intention versus observed behavior
+
+The archived raw Qwen responses at steps 2, 3 and 6 contain a specific
+edit operation but **no substantive maintenance explanation**. The
+instruction prompt was good-faith, and the changes were genuinely chosen
+by the model; that does **not** independently demonstrate that the model
+reasoned like a helpful employee or was attempting a sensible repair.
+Some outputs look more like malformed or weak task execution than
+believable human error.
+
+For that reason, this first corpus provides **real LLM-generated
+perturbations**, but not yet validated human-like causal mechanisms.
+Future runs need a separate measure for evidence-based justification,
+task relevance, and semantic preservation in the successor's handoff
+note. Do not select only model trajectories with attractive mistakes.
+
 ## SmolLM2-360M-Instruct: negative result
 
 Only **one of six responses** contained an accepted operation, and that one
