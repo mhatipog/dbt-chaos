@@ -13,6 +13,7 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 import csv
 from dataclasses import dataclass
+from hashlib import sha256
 import json
 from pathlib import Path
 from typing import Any
@@ -279,7 +280,8 @@ def evaluate_policy(*, delivered: dict[str, list[dict]],
                     independent_truth: dict[str, list[dict]],
                     policy: str, logic_fault: str = "none",
                     attested_source: dict[str, list[dict]] | None = None,
-                    execute_dbt: bool = True) -> dict[str, Any]:
+                    execute_dbt: bool = True,
+                    cache: dict[str, dict] | None = None) -> dict[str, Any]:
     if policy not in POLICIES:
         raise ValueError(f"unrecognized protection policy: {policy}")
     if not execute_dbt:
@@ -299,9 +301,21 @@ def evaluate_policy(*, delivered: dict[str, list[dict]],
     run_needed = not all_held
     observed = {}
     dbt_result = None
+    dbt_cached = False
     if run_needed:
-        dbt_result = run_case(CommerceCase(logic_fault=logic_fault),
-                              admitted_data=protected, process_data=independent_truth)
+        # Identical source, truth and SQL produce identical real-dbt results.
+        # Reuse the *actual* prior run rather than burning 20 free CI jobs.
+        cache_key = sha256(json.dumps(
+            {"protected": protected, "truth": independent_truth, "logic": logic_fault},
+            sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        dbt_cached = cache is not None and cache_key in cache
+        if dbt_cached:
+            dbt_result = deepcopy(cache[cache_key])
+        else:
+            dbt_result = run_case(CommerceCase(logic_fault=logic_fault),
+                                  admitted_data=protected, process_data=independent_truth)
+            if cache is not None:
+                cache[cache_key] = deepcopy(dbt_result)
         observed = {tuple(key.split("|", 1)): value
                     for key, value in dbt_result["observed"].items()}
     truth_gold = oracle(independent_truth)
@@ -319,7 +333,8 @@ def evaluate_policy(*, delivered: dict[str, list[dict]],
         else "delivered_snapshot_only"
     )
     result["policy_validators_installed_as_dbt_tests"] = False
-    result["dbt_executed"] = run_needed
+    result["dbt_executed"] = run_needed and not dbt_cached
+    result["dbt_result_reused"] = dbt_cached
     result["logic_fault"] = logic_fault
     result["accepted_source_row_counts"] = {
         table: len(rows) for table, rows in protected.items()
@@ -362,13 +377,15 @@ def evaluate_matrix(*, policies: tuple[str, ...] = POLICIES,
                     cases: tuple[str, ...] | None = None) -> dict:
     truth, recorded = recorded_qwen_source_cases()
     results = []
+    shared_real_dbt_cache: dict[str, dict] = {}
     for item in recorded:
         if cases is not None and item["name"] not in cases:
             continue
         for policy in policies:
             r = evaluate_policy(delivered=item["delivered"], independent_truth=truth,
                                 policy=policy,
-                                attested_source=truth if policy == "attested_replay" else None)
+                                attested_source=truth if policy == "attested_replay" else None,
+                                cache=shared_real_dbt_cache)
             results.append({"scenario": item["name"], **r})
     return {
         "experiment": "protection_replay_20261119_v1",
@@ -376,6 +393,7 @@ def evaluate_matrix(*, policies: tuple[str, ...] = POLICIES,
         "scenarios": [r["name"] for r in recorded],
         "independent_truth_events": 1081,
         "evaluations": results,
+        "unique_real_dbt_executions": len(shared_real_dbt_cache),
     }
 
 
