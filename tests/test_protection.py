@@ -56,6 +56,16 @@ class ObservableProtectionTests(unittest.TestCase):
                     self.assertIn("payments_missing_order", plan.warnings)
                     self.assertTrue(any(x["reason"] == "missing_order" for x in plan.quarantined))
 
+    def test_benign_retry_is_safe_to_deduplicate_without_holding_revenue(self):
+        sample = self.by_case["benign_exact_retry_control"]
+        self.assertEqual(oracle(self.truth), oracle(sample))
+        plan = detect_and_quarantine(sample)
+        self.assertFalse(plan.global_hold)
+        self.assertEqual(set(), plan.hold_groups)
+        self.assertEqual(1, len(plan.quarantined))
+        self.assertEqual("exact_delivery_replay", plan.quarantined[0]["reason"])
+        self.assertEqual(self.truth, plan.accepted)
+
     def test_missing_order_is_detectable_but_not_inferable(self):
         sample = self.by_case["qwen_order_deleted"]
         self.assertEqual([], source_contract_alerts(sample))
@@ -169,6 +179,26 @@ class ExecutablePolicyTests(unittest.TestCase):
         self.assertEqual(0.0, strict["safe_truth_value_fraction"])
         self.assertFalse(quarantine["dbt_executed"])
         self.assertFalse(strict["dbt_executed"])
+
+    def test_benign_retry_exposes_availability_cost_of_over_strict_policy(self):
+        name = "benign_exact_retry_control"
+        raw = self.eval(name, "raw")
+        monitor = self.eval(name, "monitor")
+        quarantine = self.eval(name, "quarantine")
+        strict = self.eval(name, "strict_gate")
+        attested = self.eval(name, "attested_replay")
+        self.assertEqual("business_correct", raw["verdict"])
+        self.assertEqual("business_correct", monitor["verdict"])
+        self.assertEqual("business_correct", quarantine["verdict"])
+        self.assertEqual(1, quarantine["quarantined_records"])
+        self.assertEqual(0, quarantine["quarantined_genuine_records"])
+        self.assertEqual(1.0, quarantine["safe_truth_value_fraction"])
+        self.assertEqual("withheld_all", strict["verdict"])
+        self.assertEqual(0.0, strict["safe_truth_value_fraction"])
+        self.assertEqual("evidence_recovered", attested["verdict"])
+        self.assertEqual(0, attested["observed_absolute_error_cents"])
+        self.assertGreater(len(raw["dbt_source_alerts"]), 0)
+        self.assertEqual([], raw["candidate_detector_findings"])
 
     def test_attested_replay_restores_source_but_never_claims_magic(self):
         for name in ("qwen_refund", "qwen_segment", "qwen_order_deleted"):
