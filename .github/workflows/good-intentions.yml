@@ -1,0 +1,100 @@
+name: Good-intentions handoff (research)
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/handoff.py'
+      - 'dbt_chaos/commerce.py'
+      - 'dbt_chaos/commerce_runner.py'
+      - 'tests/test_handoff.py'
+      - '.github/workflows/good-intentions.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/handoff.py'
+      - 'dbt_chaos/commerce.py'
+      - 'dbt_chaos/commerce_runner.py'
+      - 'tests/test_handoff.py'
+      - '.github/workflows/good-intentions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  calibrated-dbt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - run: python -m unittest discover -s tests -p 'test_handoff.py' -v
+      - run: python -m unittest discover -s tests -p 'test_commerce.py' -v
+      - name: Execute five calibrated handoffs against real dbt/DuckDB
+        run: python -m dbt_chaos.handoff --agent scripted --steps 5 --execute-dbt --output /tmp/handoff-calibrated.json
+      - name: Assert latent SQL bug, missing event and negative controls
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open('/tmp/handoff-calibrated.json'))
+          t=r['trajectory']
+          assert r['evidence_level']=='executed_dbt_duckdb', r
+          assert [s['classification'] for s in t]==[
+              'correct','silent_corruption','silent_corruption','correct','contained'
+          ], t
+          assert r['first_silent_corruption_iteration']==2, r
+          assert t[1]['source_alerts_independent']==[], t[1]
+          assert t[2]['input_to_process_difference'], t[2]
+          assert t[3]['classification']=='correct' and t[3]['process_to_observed_difference'], t[3]
+          assert 'source_duplicate_customers' in t[4]['dbt_source_alerts'], t[4]
+          print('CALIBRATION PASS: latent join drift, invisible refund loss, valid-history and duplicate controls')
+          PY
+
+  # This is deliberately isolated from normal PR CI: it downloads ~400 MB of
+  # open weights and compiles a local CPU runtime. No token, paid API or secrets.
+  # Model output is an OBSERVATION, never forced to reproduce scripted errors.
+  actual-weak-model:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research/good-intentions-handoff-20261119'
+    needs: calibrated-dbt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]' 'llama-cpp-python>=0.3,<0.4' 'huggingface_hub>=0.26,<2'
+      - name: Obtain open-weights 0.5B model (temporary, no artifact upload)
+        run: |
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          path=hf_hub_download(
+              repo_id='Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF',
+              filename='qwen2.5-0.5b-coder-instruct-q4_k_m.gguf',
+              local_dir='/tmp/handoff-weights')
+          print('Model downloaded:',path)
+          PY
+      - name: Real local low-capability LLM handoffs + actual dbt
+        run: |
+          python -m dbt_chaos.handoff --agent llama --steps 4 --execute-dbt \
+            --model /tmp/handoff-weights/qwen2.5-0.5b-coder-instruct-q4_k_m.gguf \
+            --output /tmp/handoff-weak-model.json
+      - name: Confirm independently measured, not assumed failure
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open('/tmp/handoff-weak-model.json'))
+          assert len(r['trajectory'])==4
+          assert all(s['evidence_level']=='executed_dbt_duckdb' for s in r['trajectory'])
+          print('Observed model-driven actions:',[s['action'] for s in r['trajectory']])
+          print('Measured classifications:',[s['classification'] for s in r['trajectory']])
+          print('Malformed agent outputs:',r['invalid_agent_outputs'])
+          print('First silent corruption:',r['first_silent_corruption_iteration'])
+          PY
