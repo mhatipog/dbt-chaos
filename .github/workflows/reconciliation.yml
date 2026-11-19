@@ -1,4 +1,4 @@
-name: Multi-source reconciliation: independent evidence and lateness
+name: "Multi-source reconciliation: independent evidence and lateness"
 
 on:
   push:
