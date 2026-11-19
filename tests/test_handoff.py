@@ -101,6 +101,32 @@ class HandoffTests(unittest.TestCase):
         self.assertIn("previous_agent_note", public)
         self.assertEqual("latest_version", public["customer_lookup"])
 
+    def test_context_control_changes_only_handoff_information(self):
+        class RecordingAgent:
+            name = "recorder"
+            def __init__(self):
+                self.views = []
+            def decide(self, iteration, task, view):
+                self.views.append(view)
+                return ("leave_unchanged", f"Note {iteration}", True)
+
+        handoff, full, no_notes = RecordingAgent(), RecordingAgent(), RecordingAgent()
+        for context, agent in (("handoff", handoff), ("full_history", full),
+                               ("no_notes", no_notes)):
+            report = run(agent=agent, steps=3, context_mode=context)
+            self.assertEqual(context, report["context_mode"])
+            self.assertEqual(3, len(agent.views))
+        self.assertIn("previous_agent_note", handoff.views[1])
+        self.assertNotIn("prior_agent_history", handoff.views[1])
+        self.assertEqual(1, len(full.views[1]["prior_agent_history"]))
+        self.assertEqual(2, len(full.views[2]["prior_agent_history"]))
+        self.assertEqual("Note 1", full.views[1]["prior_agent_history"][0]["note"])
+        self.assertNotIn("previous_agent_note", no_notes.views[1])
+        self.assertNotIn("prior_agent_history", no_notes.views[1])
+        self.assertEqual(full.views[2]["tables"], handoff.views[2]["tables"])
+        with self.assertRaises(ValueError):
+            run(agent=ScriptedAgent(), context_mode="arbitrary")
+
     def test_steps_are_bounded(self):
         for count in (0, 21, -1):
             with self.subTest(count=count):
