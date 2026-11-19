@@ -1,0 +1,134 @@
+name: Matched 20-handoff good-faith LLM benchmark (research)
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/relay_benchmark.py'
+      - 'dbt_chaos/full_datasets.py'
+      - 'tests/test_relay_benchmark.py'
+      - '.github/workflows/relay-20.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dbt-chaos-relay20-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  design-and-instrument-calibration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - name: Test matched task tapes, hidden truth isolation and full snapshots
+        run: python -m unittest discover -s tests -p test_relay_benchmark.py -v
+      - name: Regression check on original dataset generation
+        run: python -m unittest discover -s tests -p test_full_datasets.py -v
+      - name: Scripted context-sensitivity calibration with real dbt (not LLM)
+        run: |
+          python -m dbt_chaos.relay_benchmark \
+            --agent scripted --seed 20261119 --steps 8 \
+            --modes relay anchored fresh --checkpoints 2 8 \
+            --output-dir /tmp/relay-calibration
+      - name: Verify calibration proves the experiment is sensitive to charter loss
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from dbt_chaos.audit_corpus import audit_corpus
+          root=Path('/tmp/relay-calibration')
+          r=json.loads((root/'comparison.json').read_text())
+          by={x['mode']:x for x in r['results']}
+          assert set(by)=={'relay','anchored','fresh'}
+          assert by['relay']['model']=='scripted_context_sensitivity_not_llm'
+          assert by['relay']['final_source_absolute_error_cents']>0
+          assert by['anchored']['final_source_absolute_error_cents']==0
+          assert by['fresh']['final_source_absolute_error_cents']==0
+          assert by['relay']['first_measured_output_error_step']==2,by['relay']
+          for mode in by:
+              audit=audit_corpus(root/mode)
+              assert audit['verified'] and audit['snapshots']==8
+              assert [p['step'] for p in by[mode]['checkpoint_dbt_results']]==[2,8]
+          print('CALIBRATION OK; all assertions are scripted, NOT LLM evidence')
+          PY
+
+  genuine-llm-matched-relays:
+    needs: design-and-instrument-calibration
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - seed: 20261119
+            modes: 'relay anchored fresh'
+          - seed: 20261120
+            modes: 'relay anchored'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 32
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]' 'llama-cpp-python>=0.3,<0.4' 'huggingface_hub>=0.26,<2'
+      - name: Obtain official free quantized Qwen 0.5B model in ephemeral space
+        run: |
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          p=hf_hub_download(
+            repo_id='Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF',
+            filename='qwen2.5-coder-0.5b-instruct-q4_k_m.gguf',
+            local_dir='/tmp/relay-weights')
+          print('Local CPU model:',p)
+          PY
+      - name: Twenty matched handoffs per experimental arm, actual dbt checkpoints
+        run: |
+          python -m dbt_chaos.relay_benchmark \
+            --agent llama --seed ${{ matrix.seed }} --steps 20 \
+            --modes ${{ matrix.modes }} --checkpoints 1 5 10 15 20 \
+            --model /tmp/relay-weights/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf \
+            --output-dir /tmp/relay-20
+      - name: Audit every complete source snapshot and derive real outcomes
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from dbt_chaos.audit_corpus import audit_corpus
+          root=Path('/tmp/relay-20')
+          r=json.loads((root/'comparison.json').read_text())
+          summaries=r['results']
+          assert all(x['steps']==20 for x in summaries)
+          assert len({x['model_sha256'] for x in summaries})==1
+          assert all(x['model']=='local_llm_good_faith_relay' for x in summaries)
+          for x in summaries:
+              assert [p['step'] for p in x['checkpoint_dbt_results']]==[1,5,10,15,20]
+              result=audit_corpus(root/x['mode'])
+              assert result['verified'] and result['snapshots']==20
+              print(x['mode'],
+                    'valid=',20-x['invalid_model_outputs'],
+                    'applied=',x['applied_edits'],
+                    'final_source_l1_eur=',x['final_source_absolute_error_cents']/100,
+                    'final_real_dbt_business_l1_eur=',
+                    x['checkpoint_dbt_results'][-1]['business_absolute_error_cents']/100,
+                    'first_measured_error=',x['first_measured_output_error_step'])
+          print('Matched process + tasks, TWO independent chain trials per seed,'
+                'NOT a population-level causal claim')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: weak-llm-20-handoff-seed-${{ matrix.seed }}
+          path: /tmp/relay-20/
+          retention-days: 1
+          if-no-files-found: warn
