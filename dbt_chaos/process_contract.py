@@ -674,6 +674,11 @@ def score_contract_challenge(*, public_dir: Path, answer_key: Path,
             "observable_alerts": alerts[scenario],
             "source_to_business_l1_cents": source_l1,
             "published_vs_delivered_source_l1_cents": transform_l1,
+            "incorrect_published_group_count": len(scored["false_published_groups"]),
+            "unannounced_missing_group_count": len(scored["silent_missing_groups"]),
+            "exposed_business_error_groups": (
+                len(scored["false_published_groups"])
+                + len(scored["silent_missing_groups"])),
             "held_groups": len(held),
         }
     return {
