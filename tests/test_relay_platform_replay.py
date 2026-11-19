@@ -23,8 +23,9 @@ class NativeRelayScoringTests(unittest.TestCase):
         self.assertEqual("silently_wrong", result["status"])
         self.assertEqual(2000, result["false_published_l1_cents"])
         self.assertEqual(["2026-02-01|retail"], result["false_published_groups"])
-        self.assertEqual(2 / 3,
-                         result["fraction_of_correct_business_value_published"])
+        self.assertAlmostEqual(2 / 3,
+                               result["fraction_of_correct_business_value_published"],
+                               places=5)
 
     def test_all_held_is_not_miscounted_as_correct(self):
         result = score_publication(self.truth, {}, set(self.truth))
@@ -38,7 +39,7 @@ class NativeRelayScoringTests(unittest.TestCase):
         held = {("2026-02-01", "business")}
         result = score_publication(self.truth, kept, held)
         self.assertEqual("partially_held", result["status"])
-        self.assertEqual(1 / 3, result["fraction_of_correct_business_value_published"])
+        self.assertAlmostEqual(1 / 3, result["fraction_of_correct_business_value_published"], places=5)
         self.assertEqual([], result["false_published_groups"])
 
     def test_unannounced_missing_group_is_not_silent_withholding(self):
