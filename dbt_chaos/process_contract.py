@@ -341,8 +341,17 @@ def apply_scripted_fault(contract: dict, clean: dict[str, list[dict]],
                             "action": "exact_delivery_retry"})
     elif fault == "rewrite_credit":
         kind = next(k for k, sign in c["semantics"]["signs"].items() if sign < 0)
-        candidates = [x for x in altered[mr["table"]]
-                      if x[mr["kind"]] == kind and x[mr["amount"]] > 3500]
+        valid_docs = {
+            doc[dr["id"]] for doc in _latest(
+                altered[dr["table"]], dr["id"]).values()
+            if doc[dr["status"]] == c["semantics"]["included_status"]
+            and doc[dr["currency"]] == c["semantics"]["currency"]
+        }
+        candidates = [x for x in _latest(
+                          altered[mr["table"]], mr["id"]).values()
+                      if x[mr["kind"]] == kind
+                      and x[mr["amount"]] > 3500
+                      and x[mr["document_fk"]] in valid_docs]
         if not candidates:
             raise RuntimeError("cannot produce realistic credit rewrite")
         x = sorted(candidates, key=lambda row: (
