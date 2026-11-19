@@ -59,7 +59,37 @@ def main(argv=None):
     cr=cmd.add_parser("commerce-report",help="Render local HTML from real commerce evidence")
     cr.add_argument("file",type=Path)
     cr.add_argument("--out",type=Path,required=True)
+    demo=cmd.add_parser("evidence-demo",help="One-command real-dbt demo of recorded weak-LLM refund error and evidence gate")
+    demo.add_argument("--out",type=Path,required=True)
+    demo.add_argument("--markdown-out",type=Path)
+    demo.add_argument("--no-native",action="store_true",help="Skip native quality-table comparison")
+    demo.add_argument("--fail-on-silent",action="store_true",help="Exit nonzero when guarded publication has incorrect groups")
+    replay_gate=cmd.add_parser("evaluate-chain",help="Replay full archived LLM chain with an independent evidence gate; real dbt")
+    replay_gate.add_argument("corpus",type=Path,help="Exported full-dataset corpus arm (e.g. /tmp/relay/relay)")
+    replay_gate.add_argument("--tier",choices=("source_only","attested"),default="source_only")
+    replay_gate.add_argument("--out",type=Path,required=True)
+    replay_gate.add_argument("--markdown-out",type=Path)
+    replay_gate.add_argument("--no-native",action="store_true")
+    replay_gate.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
+    if args.command in ("evidence-demo", "evaluate-chain"):
+        from .evidence_gate import replay_recorded_refund_demo, replay_frozen_chain, to_markdown
+        if args.command=="evidence-demo":
+            result=replay_recorded_refund_demo(quality_enabled=not args.no_native)
+            scored=result["results"]["source_only"]["real_dbt"]
+        else:
+            result=replay_frozen_chain(args.corpus,tier=args.tier,
+                                       quality_enabled=not args.no_native)
+            scored=result["guarded_dbt_publication"]
+        args.out.parent.mkdir(parents=True,exist_ok=True)
+        args.out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\\n",encoding="utf8")
+        report=to_markdown(result)
+        if args.markdown_out:
+            args.markdown_out.parent.mkdir(parents=True,exist_ok=True)
+            args.markdown_out.write_text(report,encoding="utf8")
+        print(report)
+        return 2 if args.fail_on_silent and (
+            scored["false_published_groups"] or scored["silent_missing_groups"]) else 0
     if args.command=="commerce-report":
         from .commerce_report import render_file
         args.out.write_text(render_file(args.file),encoding="utf8")
