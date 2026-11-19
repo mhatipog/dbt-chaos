@@ -50,7 +50,7 @@ From the research branch:
 python -m pip install -e .
 
 dbt-chaos contract-generate \
-  --contract contracts/procurement.json \
+  --contract procurement \
   --seed 20261119 --fault rewrite_credit \
   --public-dir /tmp/dbt-chaos-procurement-public \
   --private-dir /tmp/dbt-chaos-procurement-private
@@ -72,7 +72,11 @@ dbt-chaos contract-score \
 
 All steps are free, offline and reproducible; SQLite is part of the Python
 standard library. No dbt adapter, LLM model download, cloud warehouse or
-production credentials are required.
+production credentials are required. **`procurement` and `grants` are
+bundled contract names** in the installed Python wheel; `--contract
+path/to/your-contract.json` also works for a validated custom definition.
+The public SQL files are generated automatically; `contract-probe` executes
+their observable checks without the private ledger.
 
 The clean reference result must match the ledger truth. In the
 `rewrite_credit` scenario, the platform's SQL correctly computes
@@ -89,7 +93,7 @@ exploring a platform's current baseline weaknesses.
 
 ```bash
 dbt-chaos contract-generate \
-  --contract contracts/grants.json \
+  --contract grants \
   --seed 20261119 --fault reclassify_party \
   --public-dir grants-public --private-dir grants-secret
 
