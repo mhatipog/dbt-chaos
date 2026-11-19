@@ -107,6 +107,21 @@ process-ledger truth and test outcomes. It is currently a hypothesis, **not
 a proven novel result**.
 
 Relevant recent work (not exhaustive):
+
+**Closest prior benchmarks to investigate before claiming novelty:**
+- [Snowflake data-eng-bench (2026)](https://github.com/Snowflake-Labs/data-eng-bench):
+  103 real dbt/data-engineering tasks, hidden row-level verifiers, substantial
+  business-process semantics. Our differentiator must be **longitudinal,
+  good-faith drift with previous-agent context**, not just dbt + an oracle.
+- [Astronomer de-bench (2026)](https://github.com/astronomer/de-bench):
+  139 data-engineering tasks including Airflow and dbt, with execution grading.
+  Again, individual task success is not itself novel.
+- [DataClawEval (2026)](https://arxiv.org/abs/2607.28033):
+  end-to-end real-engine data engineering agent tasks and deterministic graders.
+- [Synthetic event generation systematic review (2026)](https://link.springer.com/article/10.1007/s44311-026-00060-w):
+  process-control-flow and attribute-dependency realism remain challenging;
+  supports moving from schema-derived fake tables to process-event generation.
+
 - [From Faulty Claims to Incorrect Patches (2026)](https://arxiv.org/abs/2610.32338):
   flawed reasoning during code agent tasks.
 - [SWE-Bench Pro Verified (2026)](https://arxiv.org/abs/2609.08149):
@@ -115,7 +130,7 @@ Relevant recent work (not exhaustive):
   controlled faults in agent workflows.
 - [SABER: Small Actions, Big Errors (2025)](https://cdn.amazon.science/74/ec/867848fa44bda73d6237dfd6183d/saber-tau-bench-verified.pdf):
   consequences of mutating agent actions.
-- [GitHub standard public runners](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/the-runner-for-a-job):
+- [GitHub standard public runners](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job):
   standard runners are free for public repositories.
 - [Qwen2.5-Coder 0.5B GGUF](https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF):
   local GGUF model distribution, rather than a paid API.
