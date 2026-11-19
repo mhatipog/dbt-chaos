@@ -6,6 +6,9 @@ sources:
       - name: orders
       - name: customers
       - name: payments
+      - name: provider_transactions
+      - name: accounting_journal
+      - name: bank_batches
 models:
   - name: gold_daily_revenue
     columns:
