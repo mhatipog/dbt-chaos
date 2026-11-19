@@ -26,6 +26,19 @@ DDL={
  "orders":"create table raw.orders(row_id integer, order_id integer, customer_id integer, version integer, order_day varchar, gross_cents integer, status varchar, currency varchar)",
  "payments":"create table raw.payments(row_id integer, payment_id integer, order_id integer, version integer, kind varchar, amount_cents integer)",
 }
+RECONCILIATION_COLUMNS={
+ "provider_transactions":("payment_id","order_id","kind","amount_cents","batch_day",
+                          "available_after_days","origin_root","reference"),
+ "accounting_journal":("payment_id","signed_cents","available_after_days",
+                       "origin_root","reference"),
+ "bank_batches":("batch_day","net_cents","available_after_days",
+                 "origin_root","reference"),
+}
+RECONCILIATION_DDL={
+ "provider_transactions":"create table raw.provider_transactions(payment_id integer, order_id integer, kind varchar, amount_cents integer, batch_day varchar, available_after_days integer, origin_root varchar, reference varchar)",
+ "accounting_journal":"create table raw.accounting_journal(payment_id integer, signed_cents integer, available_after_days integer, origin_root varchar, reference varchar)",
+ "bank_batches":"create table raw.bank_batches(batch_day varchar, net_cents integer, available_after_days integer, origin_root varchar, reference varchar)",
+}
 SOURCE_TEST_IDS={
  "duplicate_customers":"source_duplicate_customers",
  "duplicate_orders":"source_duplicate_orders",
@@ -35,12 +48,25 @@ SOURCE_TEST_IDS={
 }
 
 def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
-             process_data:dict|None=None, quality_enabled:bool=False)->dict:
+             process_data:dict|None=None, quality_enabled:bool=False,
+             reconciliation_enabled:bool=False,
+             reconciliation_evidence:dict|None=None,
+             reconciliation_as_of_lag_days:int=5)->dict:
     try:
         import duckdb
     except ImportError as exc:
         raise RuntimeError("Install real dbt dependencies: pip install -e '.[dbt]'") from exc
     data=inject_source(case.source_fault) if admitted_data is None else deepcopy(admitted_data)
+    if reconciliation_enabled:
+        from .reconciliation import validate_evidence
+        if reconciliation_evidence is None:
+            raise ValueError("reconciliation_enabled requires independently supplied evidence")
+        if (type(reconciliation_as_of_lag_days) is not int
+                or not 0 <= reconciliation_as_of_lag_days <= 10):
+            raise ValueError("invalid reconciliation as-of lag")
+        validate_evidence(reconciliation_evidence)
+    elif reconciliation_evidence is not None:
+        raise ValueError("evidence supplied but reconciliation_enabled is false")
     expected_alerts=source_contract_alerts(data)
     started=perf_counter()
     with TemporaryDirectory(prefix="dbt-chaos-commerce-") as temp:
@@ -56,6 +82,17 @@ def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
                 if rows:
                     placeholders=",".join("?" for _ in COLUMNS[table])
                     db.executemany(f"insert into raw.{table} values ({placeholders})",rows)
+            if reconciliation_enabled:
+                for table,columns in RECONCILIATION_COLUMNS.items():
+                    db.execute(RECONCILIATION_DDL[table])
+                    source_rows=reconciliation_evidence[table]
+                    records=[tuple(row[col] for col in columns)
+                             for row in source_rows]
+                    if records:
+                        placeholders=",".join("?" for _ in columns)
+                        db.executemany(
+                            f"insert into raw.{table} values ({placeholders})",
+                            records)
 
         def invoke(command:str):
             env={key:os.environ[key] for key in
@@ -69,7 +106,9 @@ def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
             cmd=[str(Path(sys.executable).with_name("dbt")),command,
                  "--project-dir",str(project),"--profiles-dir",str(project),
                  "--target","local","--vars",json.dumps({"logic_fault":case.logic_fault,
-                                                     "enable_quality_models":quality_enabled})]
+                                                     "enable_quality_models":quality_enabled,
+                 "enable_reconciliation_models":reconciliation_enabled,
+                 "reconciliation_as_of_lag_days":reconciliation_as_of_lag_days})]
             before=perf_counter()
             try:
                 proc=subprocess.run(cmd,cwd=project,env=env,text=True,
@@ -128,6 +167,58 @@ def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
                     "models_executed_by_dbt":True,
                     "implementation":"native_dbt_sql_opt_in",
                 }
+            reconciliation_payload=None
+            if reconciliation_enabled:
+                payments=db.execute(
+                    "select payment_id, reconciliation_status, operational_cents, "
+                    "provider_cents, journal_signed_cents, business_day, segment "
+                    "from analytics.rec_payment_evidence order by payment_id"
+                ).fetchall()
+                bank=db.execute(
+                    "select batch_day, reconciliation_status, operational_net_cents, "
+                    "bank_net_cents from analytics.rec_bank_evidence "
+                    "order by batch_day"
+                ).fetchall()
+                held=db.execute(
+                    "select order_day,segment from analytics.rec_held_groups "
+                    "order by order_day,segment"
+                ).fetchall()
+                release=db.execute(
+                    "select publication_status,report_groups,withheld_groups,"
+                    "dispute_count,pending_count from analytics.rec_release_gate"
+                ).fetchone()
+                published=db.execute(
+                    "select order_day,segment,revenue_cents from "
+                    "analytics.rec_gold_published order by order_day,segment"
+                ).fetchall()
+                if release is None:
+                    raise RuntimeError("reconciliation release gate returned no state")
+                reconciliation_payload={
+                    "release_status":release[0],
+                    "original_group_count":int(release[1]),
+                    "held_group_count":int(release[2]),
+                    "dispute_count":int(release[3]),
+                    "pending_count":int(release[4]),
+                    "payment_evidence":[{
+                        "payment_id":p[0],"status":p[1],
+                        "operational_cents":p[2],"provider_cents":p[3],
+                        "journal_signed_cents":p[4],
+                        "business_day":p[5],"segment":p[6],
+                    } for p in payments],
+                    "bank_evidence":[{
+                        "batch_day":p[0],"status":p[1],
+                        "operational_net_cents":p[2],"bank_net_cents":p[3],
+                    } for p in bank],
+                    "held_groups":[f"{d}|{seg}" for d,seg in held],
+                    "released_gold":{f"{d}|{seg}":int(cents)
+                                     for d,seg,cents in published},
+                    "evidence_as_of_lag_days":reconciliation_as_of_lag_days,
+                    "provider_independent_root":"independent_psp",
+                    "bank_independent_root":"independent_bank",
+                    "accounting_correlated_root":"merchant_application",
+                    "models_executed_by_dbt":True,
+                    "implementation":"native_dbt_multisource_reconciliation_opt_in",
+                }
 
     observed={}
     for day,segment,cents in rows:
@@ -151,6 +242,8 @@ def run_case(case:CommerceCase, *, admitted_data:dict|None=None,
                   source_contract_warnings=expected_alerts)
     if quality_enabled:
         result["native_quality"]=native_payload
+    if reconciliation_enabled:
+        result["native_reconciliation"]=reconciliation_payload
     return result
 
 def run_matrix(selected:list[CommerceCase],max_cases:int=30)->dict:
