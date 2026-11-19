@@ -1,0 +1,102 @@
+name: Vendor-neutral chaos challenge interoperability
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/external_challenge.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_external_challenge.py'
+      - '.github/workflows/external-challenge.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/external_challenge.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_external_challenge.py'
+      - '.github/workflows/external-challenge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dbt-chaos-platform-challenge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-platform-challenge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install no-LLM, no-dbt source challenge scorer
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Cross-platform output and leakage tests
+        run: python -m unittest discover -s tests -p test_external_challenge.py -v
+      - name: Create a full three-table synthetic model-edit challenge
+        run: |
+          python -m dbt_chaos.full_datasets --agent scripted \
+            --seed 20261119 --steps 3 \
+            --output-dir /tmp/example-corpus
+          dbt-chaos export-challenge /tmp/example-corpus \
+            --step 2 --public-dir /tmp/public-platform-input \
+            --private-dir /tmp/local-hidden-key
+      - name: Calibrate the scorer with a deliberately naive platform
+        run: |
+          python - <<'PY'
+          import json,csv
+          from pathlib import Path
+          root=Path('/tmp/local-hidden-key')
+          key=json.loads((root/'answer_key.json').read_text())
+          dest=Path('/tmp/naive-platform-output')
+          dest.mkdir()
+          for scenario in ('clean','chaos'):
+              entries=key['expected_given_source'][scenario]
+              with (dest/f'{scenario}.csv').open('w',newline='') as f:
+                  w=csv.writer(f)
+                  w.writerow(['order_day','segment','revenue_cents'])
+                  for name,cents in sorted(entries.items()):
+                      w.writerow([*name.split('|',1),cents])
+          print('Synthetic naive-platform calibration outputs written')
+          PY
+          dbt-chaos score-challenge \
+            --public-dir /tmp/public-platform-input \
+            --answer-key /tmp/local-hidden-key/answer_key.json \
+            --published-dir /tmp/naive-platform-output \
+            --out /tmp/platform-scores.json
+      - name: Assert platform-correct garbage propagation is distinguished from business truth
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('/tmp/platform-scores.json').read_text())
+          assert report['results']['clean']['verdict']=='business_correct'
+          assert report['results']['chaos']['verdict']=='garbage_passed_through'
+          assert report['results']['chaos']['published_vs_admitted_l1_cents']==0
+          assert report['results']['chaos']['source_to_process_l1_cents']>0
+          assert report['wrong_chaos_published_groups']>0
+          public=Path('/tmp/public-platform-input')
+          assert not (public/'answer_key.json').exists()
+          assert not (public/'ledger/process_events.jsonl').exists()
+          print('PASS: public inputs and private evaluator separated;'
+                ' vendor-neutral garbage-through scoring verified.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dbt-chaos-public-platform-challenge-example
+          path: /tmp/public-platform-input/
+          retention-days: 2
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dbt-chaos-platform-scoring-calibration
+          path: /tmp/platform-scores.json
+          retention-days: 2
+          if-no-files-found: warn
