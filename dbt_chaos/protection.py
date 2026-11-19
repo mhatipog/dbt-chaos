@@ -376,6 +376,16 @@ def recorded_qwen_source_cases() -> tuple[dict[str, list[dict]], list[dict]]:
         cases.append({"name": ("qwen_refund", "qwen_segment", "qwen_order_deleted")[n - 1],
                       "delivered": deepcopy(delivered),
                       "recorded_model_edit": proposal})
+    # A separate, benign OPERATIONAL control, not a claimed LLM-made error.
+    # Exact payment delivery retry has identical financial meaning.
+    benign = deepcopy(truth)
+    copy = dict(benign["payments"][0],
+                row_id=max(r["row_id"] for r in benign["payments"]) + 1)
+    benign["payments"].append(copy)
+    if oracle(benign) != oracle(truth):
+        raise AssertionError("benign retry unexpectedly altered business meaning")
+    cases.append({"name": "benign_exact_retry_control", "delivered": benign,
+                  "recorded_model_edit": None})
     return truth, cases
 
 
@@ -407,7 +417,8 @@ def main():
     ap = argparse.ArgumentParser(description="Evidence-tiered source protection benchmark")
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--case", choices=("clean_control", "qwen_refund",
-                                      "qwen_segment", "qwen_order_deleted"))
+                                      "qwen_segment", "qwen_order_deleted",
+                                      "benign_exact_retry_control"))
     ap.add_argument("--policies", nargs="+", choices=POLICIES, default=list(POLICIES))
     args = ap.parse_args()
     results = evaluate_matrix(
