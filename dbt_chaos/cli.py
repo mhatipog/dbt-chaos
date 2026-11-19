@@ -100,7 +100,45 @@ def main(argv=None):
     rec_score.add_argument("--held",type=Path)
     rec_score.add_argument("--out",type=Path,required=True)
     rec_score.add_argument("--fail-on-silent",action="store_true")
+    contract=cmd.add_parser("contract-generate",help="Generate independent process-ledger chaos from a safe declarative contract")
+    contract.add_argument("--contract",type=Path,required=True)
+    contract.add_argument("--seed",type=int,default=20261119)
+    contract.add_argument("--fault",choices=("none","rewrite_credit","reclassify_party","drop_document","duplicate_delivery"),default="rewrite_credit")
+    contract.add_argument("--public-dir",type=Path,required=True)
+    contract.add_argument("--private-dir",type=Path,required=True)
+    cref=cmd.add_parser("contract-reference",help="Run independently executed SQLite reference on public synthetic inputs (no private truth)")
+    cref.add_argument("--public-dir",type=Path,required=True)
+    cref.add_argument("--output-dir",type=Path,required=True)
+    cs=cmd.add_parser("contract-score",help="Grade platform-published results against private event-ledger truth")
+    cs.add_argument("--public-dir",type=Path,required=True)
+    cs.add_argument("--answer-key",type=Path,required=True)
+    cs.add_argument("--published-dir",type=Path,required=True)
+    cs.add_argument("--held-dir",type=Path)
+    cs.add_argument("--alerts-json",type=Path)
+    cs.add_argument("--out",type=Path,required=True)
+    cs.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
+    if args.command in ("contract-generate","contract-reference","contract-score"):
+        from .process_contract import (
+            export_contract_challenge,run_reference_from_public,
+            score_contract_challenge)
+        if args.command=="contract-generate":
+            result=export_contract_challenge(
+                contract_path=args.contract,seed=args.seed,fault=args.fault,
+                public_dir=args.public_dir,private_dir=args.private_dir)
+        elif args.command=="contract-reference":
+            result=run_reference_from_public(args.public_dir,args.output_dir)
+        else:
+            result=score_contract_challenge(
+                public_dir=args.public_dir,answer_key=args.answer_key,
+                published_dir=args.published_dir,held_dir=args.held_dir,
+                alerts_json=args.alerts_json)
+            args.out.parent.mkdir(parents=True,exist_ok=True)
+            args.out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf8")
+        print(json.dumps(result,indent=2,sort_keys=True))
+        return (2 if args.command=="contract-score" and args.fail_on_silent and any(
+                r["published"]["status"]=="silently_wrong"
+                for r in result["results"].values()) else 0)
     if args.command in ("reconcile-demo","export-reconciliation",
                           "score-reconciliation"):
         from .reconciliation_lab import (
