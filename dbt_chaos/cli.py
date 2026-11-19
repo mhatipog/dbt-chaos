@@ -71,7 +71,42 @@ def main(argv=None):
     replay_gate.add_argument("--markdown-out",type=Path)
     replay_gate.add_argument("--no-native",action="store_true")
     replay_gate.add_argument("--fail-on-silent",action="store_true")
+    external=cmd.add_parser("export-challenge",help="Export clean and weak-agent-chaotic CSVs for any data platform; keep answer key separate")
+    external.add_argument("corpus",type=Path)
+    external.add_argument("--public-dir",type=Path,required=True)
+    external.add_argument("--private-dir",type=Path,required=True)
+    external.add_argument("--step",type=int)
+    external_score=cmd.add_parser("score-challenge",help="Score externally published CSV results against hidden process truth")
+    external_score.add_argument("--public-dir",type=Path,required=True)
+    external_score.add_argument("--answer-key",type=Path,required=True)
+    external_score.add_argument("--published-dir",type=Path,required=True)
+    external_score.add_argument("--held-dir",type=Path)
+    external_score.add_argument("--alerts-json",type=Path)
+    external_score.add_argument("--out",type=Path,required=True)
+    external_score.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
+    if args.command=="export-challenge":
+        from .external_challenge import export_external_challenge
+        result=export_external_challenge(
+            corpus=args.corpus,public_dir=args.public_dir,
+            private_dir=args.private_dir,step=args.step)
+        print(json.dumps(result,indent=2,sort_keys=True))
+        return 0
+    if args.command=="score-challenge":
+        from .external_challenge import score_external_challenge
+        result=score_external_challenge(
+            public_dir=args.public_dir,answer_key=args.answer_key,
+            published_dir=args.published_dir,held_dir=args.held_dir,
+            alerts_json=args.alerts_json)
+        args.out.parent.mkdir(parents=True,exist_ok=True)
+        args.out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf8")
+        for case,value in result["results"].items():
+            print(f"{case}: {value['verdict']}; "
+                  f"wrong published groups={len(value['published']['false_published_groups'])}; "
+                  f"correct value fraction={value['published']['fraction_of_correct_business_value_published']}")
+        return (2 if args.fail_on_silent and any(
+            value["published"]["status"]=="silently_wrong"
+            for value in result["results"].values()) else 0)
     if args.command in ("evidence-demo", "evaluate-chain"):
         from .evidence_gate import replay_recorded_refund_demo, replay_frozen_chain, to_markdown
         if args.command=="evidence-demo":
