@@ -200,7 +200,10 @@ class ExecutablePolicyTests(unittest.TestCase):
         self.assertGreater(len(report["held_groups"]), 0)
         self.assertLess(report["safe_truth_value_fraction"], 1)
         self.assertEqual(0, report["incorrect_published_group_count"])
-        self.assertGreater(report["quarantined_genuine_records"], 0)
+        # A rewritten negative amount is not the original genuine event;
+        # its quarantine is appropriate, but withholding its reporting group
+        # still reduces coverage.
+        self.assertEqual(0, report["quarantined_genuine_records"])
 
 
 if __name__ == "__main__":
