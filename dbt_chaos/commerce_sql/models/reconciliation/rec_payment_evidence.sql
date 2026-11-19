@@ -67,14 +67,15 @@ select *,
        case
            when not operational_present then 'source_payment_missing'
            when business_day is null or segment is null then 'order_unresolvable'
+           when provider_present and provider_disagrees
+               then 'provider_transaction_mismatch'
+           when journal_signed_cents is not null
+               and journal_signed_cents <> operational_signed_cents
+               then 'correlated_internal_gl_mismatch'
            when not provider_present and
               {{ var('reconciliation_as_of_lag_days', 5) }} >= 2
                then 'provider_missing_after_sla'
            when not provider_present then 'pending_provider'
-           when provider_disagrees then 'provider_transaction_mismatch'
-           when journal_signed_cents is not null
-               and journal_signed_cents <> operational_signed_cents
-               then 'correlated_internal_gl_mismatch'
            else 'provider_matched'
        end as reconciliation_status
 from matched
