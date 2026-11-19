@@ -1,0 +1,86 @@
+name: Evidence-tiered protection benchmark (research)
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/protection.py'
+      - 'dbt_chaos/full_datasets.py'
+      - 'dbt_chaos/commerce.py'
+      - 'dbt_chaos/commerce_runner.py'
+      - 'tests/test_protection.py'
+      - '.github/workflows/protection.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/protection.py'
+      - 'dbt_chaos/full_datasets.py'
+      - 'dbt_chaos/commerce.py'
+      - 'dbt_chaos/commerce_runner.py'
+      - 'tests/test_protection.py'
+      - '.github/workflows/protection.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evidence-protection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-dbt-defense-matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 17
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - name: Verify observable rules and real dbt policy experiments
+        run: python -m unittest discover -s tests -p test_protection.py -v
+      - name: Execute 4 matched source cases under 5 distinct protection policies
+        run: |
+          python -m dbt_chaos.protection --output /tmp/protection-matrix.json
+      - name: Independently assert reporting correctness versus publication safety
+        run: |
+          python - <<'PY'
+          import json
+          r=json.load(open('/tmp/protection-matrix.json'))
+          table={(x['scenario'],x['policy']):x for x in r['evaluations']}
+          assert len(table)==20
+          assert r['unique_real_dbt_executions']<=5
+          for policy in ['raw','monitor','quarantine','strict_gate','attested_replay']:
+              x=table['clean_control',policy]
+              assert x['verdict']=='business_correct',x
+              assert x['safe_truth_value_fraction']==1,x
+              assert x['quarantined_records']==0,x
+          for name in ('qwen_refund','qwen_segment'):
+              for policy in ('raw','monitor','quarantine','strict_gate'):
+                  assert table[name,policy]['verdict']=='silent_corruption', (name,policy)
+              assert table[name,'attested_replay']['verdict']=='evidence_recovered'
+          assert table['qwen_order_deleted','raw']['verdict']=='silent_corruption'
+          assert table['qwen_order_deleted','monitor']['verdict']=='detected_but_exposed'
+          assert table['qwen_order_deleted','strict_gate']['verdict']=='withheld_all'
+          assert table['qwen_order_deleted','quarantine']['verdict']=='withheld_all'
+          assert table['qwen_order_deleted','attested_replay']['verdict']=='evidence_recovered'
+          assert table['qwen_order_deleted','raw']['candidate_detector_findings']==[]
+          assert table['qwen_order_deleted','monitor']['candidate_detector_findings']
+          assert table['qwen_order_deleted','strict_gate']['quarantined_records']==0
+          print('VERIFIED: 20 policy/scenario results,',r['unique_real_dbt_executions'],
+                'distinct real dbt executions, no unearned detection claims.')
+          print('case, policy, verdict, bad groups, held groups, safe value fraction')
+          for entry in r['evaluations']:
+              print(entry['scenario'],entry['policy'],entry['verdict'],
+                    entry['incorrect_published_group_count'],len(entry['held_groups']),
+                    entry['safe_truth_value_fraction'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: research-protection-policy-matrix
+          path: /tmp/protection-matrix.json
+          retention-days: 2
+          if-no-files-found: warn
