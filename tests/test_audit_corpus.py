@@ -1,5 +1,4 @@
 """Offline corpus auditors must detect both corrupt bytes and forged traces."""
-from copy import deepcopy
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -69,6 +68,7 @@ class CorpusAuditTests(unittest.TestCase):
             manifest = json.loads(manifest_file.read_text())
             rel = "steps/02/source_delivery/payments.csv"
             manifest["files"][rel]["sha256"] = sha256(rows).hexdigest()
+            manifest["files"][rel]["size_bytes"] = len(rows)
             manifest_file.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
             with self.assertRaisesRegex(ValueError, "snapshot does not replay"):
                 audit_corpus(root)
