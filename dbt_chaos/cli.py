@@ -85,7 +85,64 @@ def main(argv=None):
     external_score.add_argument("--alerts-json",type=Path)
     external_score.add_argument("--out",type=Path,required=True)
     external_score.add_argument("--fail-on-silent",action="store_true")
+    rec_demo=cmd.add_parser("reconcile-demo",help="Run real native dbt with provider, correlated GL and bank reconciliation")
+    rec_demo.add_argument("--scenario",default="qwen_refund_source_only")
+    rec_demo.add_argument("--out",type=Path,required=True)
+    rec_demo.add_argument("--fail-on-silent",action="store_true")
+    rec_export=cmd.add_parser("export-reconciliation",help="Generate six synthetic evidence tables for any isolated data platform")
+    rec_export.add_argument("--scenario",default="qwen_refund_source_only")
+    rec_export.add_argument("--public-dir",type=Path,required=True)
+    rec_export.add_argument("--private-dir",type=Path,required=True)
+    rec_score=cmd.add_parser("score-reconciliation",help="Evaluate an external platform's actually published revenue against private business events")
+    rec_score.add_argument("--public-dir",type=Path,required=True)
+    rec_score.add_argument("--answer-key",type=Path,required=True)
+    rec_score.add_argument("--published",type=Path,required=True)
+    rec_score.add_argument("--held",type=Path)
+    rec_score.add_argument("--out",type=Path,required=True)
+    rec_score.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
+    if args.command in ("reconcile-demo","export-reconciliation",
+                          "score-reconciliation"):
+        from .reconciliation_lab import (
+            run_native_demo, export_scenario, score_scenario)
+        if args.command=="reconcile-demo":
+            result=run_native_demo(args.scenario)
+            grade=result["native_published_business_score"]
+            printed={
+                "scenario":result["case"],
+                "raw_business_score":result["baseline_publication"]["status"],
+                "reconciled_publication_score":grade["status"],
+                "wrong_amount_cents":grade["false_published_l1_cents"],
+                "withheld_groups":len(grade["held_groups"]),
+                "observed_disputes":result["native_dbt_reconciliation"]["dispute_count"],
+            }
+        elif args.command=="export-reconciliation":
+            result=export_scenario(
+                args.scenario,public_dir=args.public_dir,
+                private_dir=args.private_dir)
+            printed=result
+        else:
+            result=score_scenario(
+                public_dir=args.public_dir,answer_key=args.answer_key,
+                published=args.published,held=args.held)
+            grade=result["business_score"]
+            printed={
+                "scenario":result["scenario"],
+                "publication_status":grade["status"],
+                "wrong_published_groups":len(grade["false_published_groups"]),
+                "wrong_amount_cents":grade["false_published_l1_cents"],
+                "correct_business_value_fraction":
+                    grade["fraction_of_correct_business_value_published"],
+            }
+        if args.command!="export-reconciliation":
+            args.out.parent.mkdir(parents=True,exist_ok=True)
+            args.out.write_text(
+                json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf8")
+        print(json.dumps(printed,indent=2,sort_keys=True))
+        return (2 if getattr(args,"fail_on_silent",False) and
+                result.get("native_published_business_score",
+                           result.get("business_score",{})).get("status")
+                    == "silently_wrong" else 0)
     if args.command=="export-challenge":
         from .external_challenge import (export_external_challenge,
                                          export_recorded_qwen_starter_challenge)
