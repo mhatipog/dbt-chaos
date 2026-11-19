@@ -217,9 +217,14 @@ def compare_against_business_truth(
     if held and not correctly_published and not incorrectly_published:
         verdict = "withheld_all"
     elif incorrectly_published:
-        has_alert = bool(plan.quarantined or plan.warnings or
-                         (dbt_result and (dbt_result["source_alerts"] or
-                                          dbt_result["output_alerts"])))
+        # Candidate external detectors are NOT active in the raw baseline.
+        # Only policies that actually deploy them may claim detection.
+        detected_by_guard = policy in ("monitor", "quarantine", "strict_gate")
+        has_alert = bool(
+            (detected_by_guard and (plan.quarantined or plan.warnings))
+            or (dbt_result and (dbt_result["source_alerts"] or
+                                dbt_result["output_alerts"]))
+        )
         verdict = "detected_but_exposed" if has_alert else "silent_corruption"
     elif held:
         verdict = "partial_safe_publication"
@@ -251,11 +256,16 @@ def compare_against_business_truth(
                                            for k in keys - held),
         "observed_absolute_error_cents": sum(abs(observed.get(k, 0) - business_truth.get(k, 0))
                                              for k in keys - held),
-        "quarantined_records": len([q for q in plan.quarantined
-                                    if q["disposition"] == "quarantine"]),
-        "quarantined_genuine_records": verified_true_quarantine,
-        "quarantine_manifest": plan.quarantined,
-        "observable_warnings": plan.warnings,
+        "quarantined_records": (
+            len([q for q in plan.quarantined if q["disposition"] == "quarantine"])
+            if policy == "quarantine" else 0),
+        "quarantined_genuine_records": (
+            verified_true_quarantine if policy == "quarantine" else 0),
+        "quarantine_manifest": plan.quarantined if policy == "quarantine" else [],
+        "observable_warnings": plan.warnings
+            if policy in ("monitor", "quarantine", "strict_gate") else [],
+        "candidate_detector_findings": plan.quarantined
+            if policy in ("monitor", "quarantine", "strict_gate") else [],
         "dbt_source_alerts": dbt_result["source_alerts"] if dbt_result else [],
         "dbt_output_alerts": dbt_result["output_alerts"] if dbt_result else [],
         "recovered_from_attestation": len(correction_manifest),
