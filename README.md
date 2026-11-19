@@ -82,11 +82,23 @@ accepted payments, held reporting groups and released gold output.
 business ledger; fully trusted event replay is a separate upper bound, not
 an inferred repair. The default SQL and benchmarks remain unchanged.
 
-Details: [full dataset method](docs/FULL_DATASETS.md) ·
+**New longitudinal result (19 Nov 2026):** Five genuine 20-step
+Qwen0.5B maintenance chains, with frozen business-process task tapes,
+produced one €20 silent refund error in the lossy relay arm and none
+in its anchored/fresh controls or the second seed. Real dbt (and even
+the new native payment quarantine model) published the plausible but
+false revenue without an alert. This is a single exploratory positive
+example, **not yet causal evidence for a telephone-game effect**:
+the matched anchored proposal was malformed and rejected.
+[Actual model run](https://github.com/mhatipog/dbt-chaos/actions/runs/44584273184)
+· [native dbt replay](https://github.com/mhatipog/dbt-chaos/actions/runs/44587779645).
+
+Details: [longitudinal results](docs/RELAY_RESULTS_20261119.md) ·
+[matched experimental protocol](docs/MATCHED_RELAY_20.md) ·
+[full dataset method](docs/FULL_DATASETS.md) ·
 [model-generated data results](docs/FULL_DATASETS_RESULTS_20261119.md) ·
 [protection policy findings](docs/PROTECTION_RESULTS_20261119.md) ·
-[native dbt implementation](docs/NATIVE_QUALITY.md) ·
-[handoff research](docs/GOOD_INTENTIONS.md).
+[native dbt implementation](docs/NATIVE_QUALITY.md).
 
 ## What is actually implemented?
 
