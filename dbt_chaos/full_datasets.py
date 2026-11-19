@@ -46,6 +46,12 @@ PROFILE_FIELDS = ("customers", "orders", "cancel_percent",
                   "capture_percent", "refund_percent", "history_percent")
 
 
+def absolute_group_error(expected: dict, observed: dict) -> int:
+    """L1 error over day/segment groups; reclassifications never cancel out."""
+    return sum(abs(expected.get(k, 0) - observed.get(k, 0))
+               for k in expected.keys() | observed.keys())
+
+
 def parse_profile(raw: str, *, seed: int) -> tuple[Profile, bool]:
     """A model-generated scenario is accepted only if every field passes checks."""
     try:
@@ -442,6 +448,7 @@ def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
             "model_output_valid": parsed, "edit_effect": effect,
             "logic_fault": logic_fault, "source_contract_alerts": alerts,
             "input_gold": admitted_gold, "source_drift_cents": signed_input_drift,
+            "source_absolute_error_cents": absolute_group_error(ledger_gold, admitted_gold),
             "input_vs_process": difference(ledger_gold, admitted_gold),
             "evidence_level": "source_only",
         }
@@ -459,7 +466,10 @@ def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
                 dbt_gold=observed,
                 output_vs_process=difference(ledger_gold, observed),
                 transformation_drift_cents=sql_drift,
+                transformation_absolute_error_cents=absolute_group_error(admitted_gold, observed),
                 business_drift_cents=signed_input_drift + sql_drift,
+                business_absolute_error_cents=absolute_group_error(ledger_gold, observed),
+                business_groups_changed=len(difference(ledger_gold, observed)),
                 end_to_end_correct=(observed == ledger_gold),
             )
         trajectory.append(step)
@@ -596,7 +606,12 @@ def main() -> None:
         "edits": [step["edit_effect"] for step in corpus["steps"]],
         "model_outputs_valid": [step["model_output_valid"] for step in corpus["steps"]],
         "source_drift_cents": [step["source_drift_cents"] for step in corpus["steps"]],
+        "source_absolute_error_cents": [
+            step["source_absolute_error_cents"] for step in corpus["steps"]],
         "business_drift_cents": [step.get("business_drift_cents") for step in corpus["steps"]],
+        "business_absolute_error_cents": [
+            step.get("business_absolute_error_cents") for step in corpus["steps"]],
+        "business_groups_changed": [step.get("business_groups_changed") for step in corpus["steps"]],
         "dbt_outcomes": [step.get("dbt_classification") for step in corpus["steps"]],
         "bundle_files": len(manifest["files"]),
     }
