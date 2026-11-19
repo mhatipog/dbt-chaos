@@ -184,18 +184,28 @@ def apply(world: World, action: str, note: str) -> str:
     return effect
 
 
-def run(*, agent: Agent, steps: int = 4, execute_dbt: bool = False) -> dict:
+def run(*, agent: Agent, steps: int = 4, execute_dbt: bool = False,
+        context_mode: str = "handoff") -> dict:
     if not 1 <= steps <= 20:
         raise ValueError("PoC is bounded to 1..20 handoffs")
+    if context_mode not in ("handoff", "full_history", "no_notes"):
+        raise ValueError("unknown context mode")
     world = World()
     initial_truth = oracle(world.process)
     trajectory: list[dict] = []
+    history: list[dict[str, str]] = []
     for i in range(1, steps + 1):
         task = TASKS[(i - 1) % len(TASKS)]
-        action, note, valid = agent.decide(i, task, state_view(world))
+        view = state_view(world)
+        if context_mode == "full_history":
+            view["prior_agent_history"] = list(history)
+        elif context_mode == "no_notes":
+            view.pop("previous_agent_note", None)
+        action, note, valid = agent.decide(i, task, view)
         if action not in ACTIONS:
             action, note, valid = ("leave_unchanged", "Unapproved action", False)
         effect = apply(world, action, note)
+        history.append({"task": task, "action": action, "note": note[:400]})
         process_gold = oracle(world.process)
         admitted_gold = oracle(world.admitted)
         step = {
@@ -214,8 +224,24 @@ def run(*, agent: Agent, steps: int = 4, execute_dbt: bool = False) -> dict:
                 CommerceCase(logic_fault=world.logic_fault),
                 admitted_data=world.admitted, process_data=world.process,
             )
+            source_drift = sum(admitted_gold.values()) - sum(process_gold.values())
+            transformation_drift = measured["net_synthetic_cents_difference"]
+            total_drift = source_drift + transformation_drift
+            pipeline_wrong = bool(measured["contract_difference"])
+            if not measured["process_truth_difference"]:
+                end_to_end_outcome = "business_correct"
+            elif pipeline_wrong and source_drift:
+                end_to_end_outcome = "compounded_source_and_transformation_error"
+            elif pipeline_wrong:
+                end_to_end_outcome = "transformation_error"
+            else:
+                end_to_end_outcome = "source_delivery_error"
             step.update({
                 "evidence_level": measured["evidence_level"],
+                "end_to_end_outcome": end_to_end_outcome,
+                "source_drift_cents": source_drift,
+                "transformation_drift_cents": transformation_drift,
+                "total_business_drift_cents": total_drift,
                 "classification": measured["classification"],
                 "mismatched_gold_keys": measured["mismatched_gold_keys"],
                 "absolute_synthetic_cents_difference":
@@ -230,7 +256,7 @@ def run(*, agent: Agent, steps: int = 4, execute_dbt: bool = False) -> dict:
     wrong = [s for s in trajectory if s.get("classification") == "silent_corruption"]
     return {
         "experiment": "good_intentions_handoff_v0",
-        "agent": agent.name, "steps": steps,
+        "agent": agent.name, "steps": steps, "context_mode": context_mode,
         "evidence_level": ("executed_dbt_duckdb" if execute_dbt else "state_only"),
         "first_silent_corruption_iteration": wrong[0]["iteration"] if wrong else None,
         "invalid_agent_outputs": sum(not s["valid_agent_output"] for s in trajectory),
@@ -247,6 +273,7 @@ def main() -> None:
     parser.add_argument("--agent", choices=("scripted", "llama"), default="scripted")
     parser.add_argument("--model", type=Path, help="local GGUF file; required for llama")
     parser.add_argument("--steps", type=int, default=4)
+    parser.add_argument("--context-mode", choices=("handoff", "full_history", "no_notes"), default="handoff")
     parser.add_argument("--execute-dbt", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -254,7 +281,8 @@ def main() -> None:
         parser.error("--agent llama requires --model")
     agent = (ScriptedAgent() if args.agent == "scripted"
              else LocalLlamaAgent(args.model))
-    report = run(agent=agent, steps=args.steps, execute_dbt=args.execute_dbt)
+    report = run(agent=agent, steps=args.steps, execute_dbt=args.execute_dbt,
+                 context_mode=args.context_mode)
     if args.agent == "llama":
         report["model_sha256"] = agent.model_sha256
         report["model_seed"] = agent.seed
@@ -263,11 +291,14 @@ def main() -> None:
         args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     print(json.dumps({
         "agent": report["agent"], "evidence": report["evidence_level"],
+        "context_mode": report["context_mode"],
         "first_silent_corruption_iteration": report["first_silent_corruption_iteration"],
         "invalid_agent_outputs": report["invalid_agent_outputs"],
         "steps": [
             {"i": x["iteration"], "action": x["action"], "effect": x["effect"],
              "outcome": x.get("classification", "not_executed"),
+             "end_to_end_outcome": x.get("end_to_end_outcome", "not_executed"),
+             "total_business_drift_cents": x.get("total_business_drift_cents"),
              "input_shift_keys": len(x["input_to_process_difference"]),
              "process_error_keys": len(x.get("process_to_observed_difference") or {})}
             for x in report["trajectory"]
