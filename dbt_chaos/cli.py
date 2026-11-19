@@ -117,7 +117,7 @@ def main(argv=None):
                                        quality_enabled=not args.no_native)
             scored=result["guarded_dbt_publication"]
         args.out.parent.mkdir(parents=True,exist_ok=True)
-        args.out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\\n",encoding="utf8")
+        args.out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf8")
         report=to_markdown(result)
         if args.markdown_out:
             args.markdown_out.parent.mkdir(parents=True,exist_ok=True)
