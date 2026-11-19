@@ -58,6 +58,53 @@ it does not yet infer the semantics of arbitrary user schemas. It deliberately
 distinguishes **an LLM edit held for review**, **a source row quarantined**,
 **an alert raised**, and **a wrong business value actually published**.
 
+## New: reconcile across six sources, not just test individual tables
+
+An actual data platform can sometimes detect a seemingly plausible
+**€49 → €29 refund error**—but only if it has additional, independently
+observable information. dbt-chaos now simulates an operational extract,
+**payment-provider receipts**, a correlated internal accounting journal
+and **bank-like aggregate settlement evidence**, with configurable
+arrival delays and an independent process oracle.
+
+The opt-in native SQL implementation catches the real previously recorded
+Qwen agent error and **withholds only two affected reporting groups**.
+In the verified dbt run, the ungated report silently overstated revenue
+by **€20**. The reconciliation publication surface exposes **€0 incorrect
+revenue** while still delivering correct values for the other 56 groups.
+It neither guesses the correct refund nor claims the held groups were
+published. [Real execution](https://github.com/mhatipog/dbt-chaos/actions/runs/44608231036).
+
+```bash
+pip install -e '.[dbt]'
+dbt-chaos reconcile-demo \
+  --scenario qwen_refund_source_only \
+  --out reconciliation.json --fail-on-silent
+```
+
+Or test your own **isolated** data platform with six complete synthetic
+source/evidence CSV files, without dbt or an LLM:
+
+```bash
+pip install -e .
+dbt-chaos export-reconciliation \
+  --scenario qwen_refund_source_only \
+  --public-dir six-source-inputs \
+  --private-dir hidden-process-gold
+```
+
+The platform returns its *actually published* `published.csv` and optional
+`held.csv`. Run `dbt-chaos score-reconciliation` against the private
+answer key afterward. No production credentials are handled.
+
+Crucial negative control: **when every supplied source consistently
+reports €29 instead of €49**, even the new reconciler cannot know it
+is wrong. The benchmark labels that case *unobservable with provided
+evidence*, rather than unfairly attributing a detection failure to the
+platform. Provenance labels alone are not cryptographic attestation.
+
+[Detailed six-source methodology, cases, commands and limitations](docs/MULTISOURCE_RECONCILIATION.md).
+
 ## Verified results
 
 On 17 November 2026, **120 actual dbt/DuckDB experiments** completed on public GitHub-hosted runners: 20 synthetic individual faults × 6 strategies, without infrastructure errors. Correct scenarios: full refresh 20/20, source-version CDC 20/20, ingestion-offset 20/20, rolling lookback 17/20, inclusive watermark 15/20, strict watermark 13/20. Incorrect results escaped the four basic dbt tests. The 20/20 outcomes are limited to this suite, not general reliability guarantees.
