@@ -5,18 +5,22 @@ on:
     branches: [research/good-intentions-handoff-20261119]
     paths:
       - 'dbt_chaos/protection.py'
+      - 'dbt_chaos/protection_dossier.py'
       - 'dbt_chaos/full_datasets.py'
       - 'dbt_chaos/commerce.py'
       - 'dbt_chaos/commerce_runner.py'
       - 'tests/test_protection.py'
+      - 'tests/test_protection_dossier.py'
       - '.github/workflows/protection.yml'
   pull_request:
     paths:
       - 'dbt_chaos/protection.py'
+      - 'dbt_chaos/protection_dossier.py'
       - 'dbt_chaos/full_datasets.py'
       - 'dbt_chaos/commerce.py'
       - 'dbt_chaos/commerce_runner.py'
       - 'tests/test_protection.py'
+      - 'tests/test_protection_dossier.py'
       - '.github/workflows/protection.yml'
   workflow_dispatch:
 
@@ -41,6 +45,8 @@ jobs:
       - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
       - name: Verify observable rules and real dbt policy experiments
         run: python -m unittest discover -s tests -p test_protection.py -v
+      - name: Test reproducible quarantine and publication dossiers
+        run: python -m unittest discover -s tests -p test_protection_dossier.py -v
       - name: Execute 5 matched source cases under 5 distinct protection policies
         run: |
           python -m dbt_chaos.protection --output /tmp/protection-matrix.json
@@ -84,10 +90,33 @@ jobs:
                     entry['incorrect_published_group_count'],len(entry['held_groups']),
                     entry['safe_truth_value_fraction'])
           PY
+      - name: Export real accepted/held/quarantine/recovery files
+        run: |
+          python -m dbt_chaos.protection_dossier \
+            --matrix /tmp/protection-matrix.json \
+            --output-dir /tmp/protection-dossier
+      - name: Verify every dossier file and withheld-vs-executed provenance
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from dbt_chaos.protection_dossier import audit_policy_dossier
+          p=Path('/tmp/protection-dossier')
+          result=audit_policy_dossier(p)
+          assert result['evaluations']==25
+          assert result['files']>=200
+          assert not (p/'cases/qwen_order_deleted/strict_gate/dbt_input/payments.csv').exists()
+          assert (p/'cases/qwen_order_deleted/strict_gate/unexecuted_candidate_input/payments.csv').exists()
+          assert (p/'cases/qwen_order_deleted/quarantine/quarantined_rows.csv').exists()
+          assert (p/'cases/qwen_order_deleted/attested_replay/attested_corrections.csv').exists()
+          print('Complete protection dossier verified:',result)
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: research-protection-policy-matrix
-          path: /tmp/protection-matrix.json
+          name: research-protection-evidence-dossier
+          path: |
+            /tmp/protection-matrix.json
+            /tmp/protection-dossier/
+
           retention-days: 2
           if-no-files-found: warn
