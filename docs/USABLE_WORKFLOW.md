@@ -187,7 +187,59 @@ itself proof of safe publication. The scorer checks actual output and
 intentional withholding separately. A team can additionally attach
 rejected-row evidence for human review.
 
-## 4. CI and operational safety
+## 4. Advanced: test multi-source reconciliation, not only data validation
+
+The original three-source challenge intentionally demonstrated an
+**information-theoretically impossible** validation case: when the only
+observed record says €29, no schema or SQL rule can prove the actual
+business refund was €49.
+
+The new [multi-source reconciliation module](MULTISOURCE_RECONCILIATION.md)
+makes that fact *observable* by supplying independently derived payment
+provider receipts, a correlated merchant accounting journal, and a bank-like
+net batch feed with explicit availability delays.
+
+Real local dbt:
+
+```bash
+pip install -e '.[dbt]'
+dbt-chaos reconcile-demo \
+  --scenario qwen_refund_source_only \
+  --out reconciled.json --fail-on-silent
+```
+
+For Fabric, Databricks or another isolated SQL system:
+
+```bash
+dbt-chaos export-reconciliation \
+  --scenario qwen_refund_source_only \
+  --public-dir six-source-challenge \
+  --private-dir sealed-original-events
+
+# Load only public CSVs into your test workspace.
+# Export actually published reporting groups as published.csv;
+# optionally list withheld day/segment groups as held.csv.
+
+dbt-chaos score-reconciliation \
+  --public-dir six-source-challenge \
+  --answer-key sealed-original-events/answer_key.json \
+  --published published.csv \
+  --held held.csv \
+  --out multi-source-score.json --fail-on-silent
+```
+
+This is **six fully populated source/evidence tables**, not a text-only
+example. The reference reconciler catches the recorded €20 refund error;
+its native dbt publication path withholds affected groups without
+fabricating corrected values. A separate test intentionally corrupts
+every evidence channel consistently: that case is *unobservable from the
+supplied data* and must not be counted as a missed detectable fault.
+
+Both the bank-like buckets and evidence origins are **simulated**.
+A real implementation would need authenticated PSP/bank feeds, genuine
+payout/settlement calendars, fees and independent provenance controls.
+
+## 5. CI and operational safety
 
 Use `--fail-on-silent` for a job that should fail when the evaluated
 platform still exposes incorrect business results. The JSON report is
