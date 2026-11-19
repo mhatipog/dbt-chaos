@@ -52,6 +52,11 @@ jobs:
           assert t[2]['input_to_process_difference'], t[2]
           assert t[3]['classification']=='correct' and t[3]['process_to_observed_difference'], t[3]
           assert 'source_duplicate_customers' in t[4]['dbt_source_alerts'], t[4]
+          assert [x['total_business_drift_cents'] for x in t]==[0,10000,14000,2000,2000], t
+          assert [x['end_to_end_outcome'] for x in t]==[
+              'business_correct', 'transformation_error',
+              'compounded_source_and_transformation_error',
+              'source_delivery_error', 'source_delivery_error'], t
           print('CALIBRATION PASS: latent join drift, invisible refund loss, valid-history and duplicate controls')
           PY
 
@@ -83,9 +88,12 @@ jobs:
           PY
       - name: Real local low-capability LLM handoffs + actual dbt
         run: |
-          python -m dbt_chaos.handoff --agent llama --steps 4 --execute-dbt \
+          python -m dbt_chaos.handoff --agent llama --steps 4 --execute-dbt --context-mode handoff \
             --model /tmp/handoff-weights/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf \
             --output /tmp/handoff-weak-model.json
+          python -m dbt_chaos.handoff --agent llama --steps 4 --execute-dbt --context-mode full_history \
+            --model /tmp/handoff-weights/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf \
+            --output /tmp/handoff-full-context.json
       - name: Confirm independently measured, not assumed failure
         run: |
           python - <<'PY'
@@ -97,4 +105,13 @@ jobs:
           print('Measured classifications:',[s['classification'] for s in r['trajectory']])
           print('Malformed agent outputs:',r['invalid_agent_outputs'])
           print('First silent corruption:',r['first_silent_corruption_iteration'])
+          f=json.load(open('/tmp/handoff-full-context.json'))
+          assert len(f['trajectory'])==4
+          assert all(s['evidence_level']=='executed_dbt_duckdb' for s in f['trajectory'])
+          assert r['model_sha256']==f['model_sha256']
+          print('FULL HISTORY actions:', [s['action'] for s in f['trajectory']])
+          print('FULL HISTORY outcomes:', [s['end_to_end_outcome'] for s in f['trajectory']])
+          print('PAIRED net business drift cents:',
+                {'handoff':[s['total_business_drift_cents'] for s in r['trajectory']],
+                 'full_history':[s['total_business_drift_cents'] for s in f['trajectory']]})
           PY
