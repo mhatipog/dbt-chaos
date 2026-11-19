@@ -200,6 +200,31 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(1.0,result["results"]["chaos"]["published"]
                              ["fraction_of_correct_business_value_published"])
 
+    def test_missing_document_can_silently_erase_entire_reporting_group(self):
+        # Losing an entire group is NOT a correct output just because none
+        # of the retained groups has an incorrect amount.
+        with TemporaryDirectory() as t:
+            root=Path(t)
+            pub,pri,out=[root/x for x in ("p","s","o")]
+            export_contract_challenge(
+                contract_path=CONTRACTS[0], seed=20261119,
+                fault="drop_document",public_dir=pub,private_dir=pri)
+            run_reference_from_public(pub,out)
+            scores=score_contract_challenge(
+                public_dir=pub,answer_key=pri/"answer_key.json",
+                published_dir=out)
+            case=scores["results"]["chaos"]
+            self.assertEqual("garbage_passed_through",case["verdict"])
+            self.assertGreater(case["unannounced_missing_group_count"],0)
+            self.assertEqual(
+                case["incorrect_published_group_count"]
+                + case["unannounced_missing_group_count"],
+                case["exposed_business_error_groups"],
+            )
+            self.assertGreater(case["source_to_business_l1_cents"],0)
+            self.assertLess(case["published"]
+                            ["fraction_of_correct_business_value_published"],1)
+
     def test_tampering_and_secret_leakage_prevented(self):
         with TemporaryDirectory() as t:
             root=Path(t)
