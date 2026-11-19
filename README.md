@@ -58,6 +58,50 @@ it does not yet infer the semantics of arbitrary user schemas. It deliberately
 distinguishes **an LLM edit held for review**, **a source row quarantined**,
 **an alert raised**, and **a wrong business value actually published**.
 
+## New: process-first chaos for multiple business domains
+
+The [declarative process-contract guide](docs/PROCESS_CONTRACTS.md) expands
+the synthetic benchmark beyond hardcoded commerce. It ships validated
+[procurement](contracts/procurement.json) and
+[grant-disbursement](contracts/grants.json) contracts: configurable
+party→document→money-movement tables, legitimate history and retries,
+business status/currency rules, and positive/negative money movements.
+
+The contracts generate public clean/chaos CSVs, a **separate private
+process-event oracle**, optional source-only quality SQL probes and a
+reference SQL transformation. No model download, production data, dbt
+adapter or cloud account is needed for the reference implementation.
+
+```bash
+pip install -e .
+dbt-chaos contract-generate \
+  --contract contracts/procurement.json --fault rewrite_credit \
+  --seed 20261119 --public-dir procurement-public \
+  --private-dir procurement-secret
+
+dbt-chaos contract-reference \
+  --public-dir procurement-public --output-dir procurement-reference
+dbt-chaos contract-probe \
+  --public-dir procurement-public --out procurement-probes.json
+dbt-chaos contract-score \
+  --public-dir procurement-public \
+  --answer-key procurement-secret/answer_key.json \
+  --published-dir procurement-reference --out procurement-assessment.json
+```
+
+The same engine also executes `contracts/grants.json` with different
+table names, movement kinds and business statuses. Five fault scenarios
+per domain are validated using the **event-ledger oracle, delivered-source
+oracle and actual SQL execution**, with no answer-key leakage
+([CI results](https://github.com/mhatipog/dbt-chaos/actions/workflows/process-contract.yml)).
+
+**Important:** These new domain faults are scripted *human-like
+calibration*, **not fresh LLM-generated errors**. The process-contract DSL
+currently covers a constrained three-role transactional family, not
+arbitrary inferred workflows or production-ready Fabric/Databricks
+deployment. Optional SQL checks are not native installed quarantine
+controls; plausible incorrect money can still pass them.
+
 ## New: reconcile across six sources, not just test individual tables
 
 An actual data platform can sometimes detect a seemingly plausible
