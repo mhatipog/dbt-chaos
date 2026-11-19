@@ -45,6 +45,21 @@ class Profile:
 PROFILE_FIELDS = ("customers", "orders", "cancel_percent",
                   "capture_percent", "refund_percent", "history_percent")
 
+# Public process policy (safe for worker context), NOT the hidden event ledger.
+# In the lossy relay, this charter appears only at the first handoff.
+BUSINESS_CHARTER = (
+    "P01: A genuine refund must be preserved unless independent payment "
+    "evidence proves duplication. Suspicion alone is not evidence. "
+    "P02: Historical customer versions are valid; analytical joins use the "
+    "latest version rather than every historical row. "
+    "P03: Identical delivery retries must be idempotent; do not fabricate "
+    "new business events when processing retry notifications. "
+    "P04: Completed EUR orders only, with refunds subtracted from captures. "
+    "P05: Source data can be incomplete despite passing all local checks. "
+    "P06: When evidence is uncertain, do not silently rewrite financial facts."
+)
+
+
 
 def absolute_group_error(expected: dict, observed: dict) -> int:
     """L1 error over day/segment groups; reclassifications never cancel out."""
@@ -429,11 +444,18 @@ class ScriptedDatasetPlanner:
 
 def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
                  execute_dbt: bool = False, context_mode: str = "handoff",
-                 model_design: bool = True) -> dict:
+                 model_design: bool = True,
+                 fixed_tickets: list[dict] | None = None,
+                 dbt_checkpoints: set[int] | None = None) -> dict:
     if not 1 <= steps <= 20:
         raise ValueError("steps must be 1..20")
-    if context_mode not in {"handoff", "full_history", "no_notes"}:
+    if context_mode not in {"handoff", "full_history", "no_notes",
+                            "relay", "anchored", "fresh"}:
         raise ValueError("unknown context mode")
+    if fixed_tickets is not None and len(fixed_tickets) != steps:
+        raise ValueError("fixed task tape must contain exactly one ticket per step")
+    if dbt_checkpoints is not None and any(not 1 <= i <= steps for i in dbt_checkpoints):
+        raise ValueError("dbt checkpoints must be in experiment horizon")
     proposed_profile_raw = planner.design(seed) if model_design else ""
     profile, profile_accepted = (parse_profile(proposed_profile_raw, seed=seed)
                                  if model_design else (Profile(seed=seed), True))
@@ -455,7 +477,8 @@ def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
     logic_fault = "none"
     ledger_gold = oracle(truth)
     for index in range(1, steps + 1):
-        ticket = ticket_for(index, admitted, rng)
+        ticket = (deepcopy(fixed_tickets[index - 1])
+                  if fixed_tickets is not None else ticket_for(index, admitted, rng))
         exposed_ids = {name: {r["row_id"] for r in rows}
                        for name, rows in ticket["exposed_rows"].items()}
         view: dict[str, Any] = {
@@ -468,12 +491,20 @@ def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
             view["prior_note"] = messages[-1]["note"] if messages else "Initial clean setup"
         if context_mode == "full_history":
             view["history"] = list(messages[-12:])
-        # no_notes sees neither notes nor history.
+        # Matched controlled transmission arms:
+        # relay: official charter on first handoff only; then last agent's note.
+        # anchored: official charter + last agent's note every turn.
+        # fresh: official charter every turn, but no inherited note.
+        if context_mode in ("relay", "anchored", "fresh"):
+            if context_mode != "relay" or index == 1:
+                view["official_business_charter"] = BUSINESS_CHARTER
+            if context_mode in ("relay", "anchored") and messages:
+                view["prior_note"] = messages[-1]["note"][:220]
         raw = planner.edit(ticket, view)
         proposal, parsed = parse_proposal(raw)
         next_logic, effect = apply_proposal(admitted, logic_fault, proposal, exposed_ids)
         logic_fault = next_logic
-        messages.append({"ticket": ticket["ticket_id"], "note": str(proposal.get("note", ""))[:300],
+        messages.append({"ticket": ticket["ticket_id"], "note": str(proposal.get("note", ""))[:220],
                          "operation": proposal["operation"]})
         admitted_gold = oracle(admitted)
         alerts = source_contract_alerts(admitted)
@@ -482,14 +513,17 @@ def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
             "step": index, "ticket": ticket,
             "raw_model_output": raw[:2000], "proposal": proposal,
             "model_output_valid": parsed, "edit_effect": effect,
-            "logic_fault": logic_fault, "source_contract_alerts": alerts,
+            "logic_fault": logic_fault,
+            "received_charter": "official_business_charter" in view,
+            "received_handoff": "prior_note" in view,
+            "source_contract_alerts": alerts,
             "enhanced_source_alerts": enhanced_source_alerts(admitted),
             "input_gold": admitted_gold, "source_drift_cents": signed_input_drift,
             "source_absolute_error_cents": absolute_group_error(ledger_gold, admitted_gold),
             "input_vs_process": difference(ledger_gold, admitted_gold),
             "evidence_level": "source_only",
         }
-        if execute_dbt:
+        if execute_dbt and (dbt_checkpoints is None or index in dbt_checkpoints):
             result = run_case(CommerceCase(logic_fault=logic_fault),
                               admitted_data=admitted, process_data=truth)
             sql_drift = result["net_synthetic_cents_difference"]
