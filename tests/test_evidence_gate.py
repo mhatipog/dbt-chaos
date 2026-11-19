@@ -212,9 +212,7 @@ class EvidenceGateRealDbtTests(unittest.TestCase):
                              ["false_published_l1_cents"])
             self.assertGreaterEqual(first["actions_held_for_review"], 2)
             self.assertEqual(0, first["native_dbt_quarantined_rows"])
-            self.assertIn("source_only", to_markdown(first).lower()
-                          if "source_only" in to_markdown(first).lower()
-                          else "source_only")
+            self.assertIn("Actions held for review:", to_markdown(first))
 
 
 if __name__ == "__main__":
