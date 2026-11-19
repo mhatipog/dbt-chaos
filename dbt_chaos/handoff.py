@@ -228,9 +228,12 @@ def run(*, agent: Agent, steps: int = 4, execute_dbt: bool = False,
             transformation_drift = measured["net_synthetic_cents_difference"]
             total_drift = source_drift + transformation_drift
             pipeline_wrong = bool(measured["contract_difference"])
-            if not measured["process_truth_difference"]:
+            source_wrong = bool(step["input_to_process_difference"])
+            if not measured["process_truth_difference"] and (pipeline_wrong or source_wrong):
+                end_to_end_outcome = "masked_errors"
+            elif not measured["process_truth_difference"]:
                 end_to_end_outcome = "business_correct"
-            elif pipeline_wrong and source_drift:
+            elif pipeline_wrong and source_wrong:
                 end_to_end_outcome = "compounded_source_and_transformation_error"
             elif pipeline_wrong:
                 end_to_end_outcome = "transformation_error"
