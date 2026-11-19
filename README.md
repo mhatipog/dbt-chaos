@@ -75,7 +75,7 @@ adapter or cloud account is needed for the reference implementation.
 ```bash
 pip install -e .
 dbt-chaos contract-generate \
-  --contract contracts/procurement.json --fault rewrite_credit \
+  --contract procurement --fault rewrite_credit \
   --seed 20261119 --public-dir procurement-public \
   --private-dir procurement-secret
 
