@@ -160,7 +160,7 @@ def describe(corpus: dict) -> dict:
     }
 
 
-def run_comparison(*, planner_factory: Any, seed: int, steps: int = 20,
+def run_comparison(*, planner_factory: Any, seed: int = 20261119, steps: int = 20,
                    modes: tuple[str, ...] = ("relay", "anchored"),
                    checkpoints: set[int] | None = None,
                    output_dir: Path | None = None) -> dict:
