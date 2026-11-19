@@ -108,6 +108,20 @@ class ReconciliationChallengeTests(unittest.TestCase):
         self.assertGreater(score["fraction_of_correct_business_value_published"], 0)
         self.assertLess(score["fraction_of_correct_business_value_published"], 1)
 
+    def test_joint_wrong_sources_are_an_information_limit_not_a_failing_detector(self):
+        self.create("all_claimed_feeds_agree_on_wrong_value")
+        key=json.loads((self.private/"answer_key.json").read_text())
+        self.write_published(key["expected_from_admitted_source"])
+        outcome=score_scenario(
+            public_dir=self.public,answer_key=self.private/"answer_key.json",
+            published=self.output)
+        self.assertEqual("silently_wrong",outcome["business_score"]["status"])
+        self.assertEqual("unobservable_with_provided_evidence",
+                         outcome["detectability_given_available_evidence"])
+        self.assertFalse(outcome["platform_published_error_despite_observable_dispute"])
+        self.assertFalse(outcome["evidence_has_authenticated_independent_roots"])
+        self.assertEqual(2000,outcome["source_vs_business_error_cents"])
+
     def test_clean_pending_settlement_is_not_error_and_safe_hold_has_cost(self):
         self.create("clean_before_settlement")
         key = json.loads((self.private / "answer_key.json").read_text())
