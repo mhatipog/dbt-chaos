@@ -80,11 +80,17 @@ jobs:
                   assert s['chaos']['verdict']==expected,(contract,fault,score)
                   assert s['chaos']['published_vs_delivered_source_l1_cents']==0
                   assert case['oracle_separated'] and not case['model_generated_fault']
+                  if fault in ('none','duplicate_delivery'):
+                      assert s['chaos']['exposed_business_error_groups']==0
+                  else:
+                      assert s['chaos']['exposed_business_error_groups']>0
                   results.append({
                       'contract':contract,'fault':fault,
                       'chaos':s['chaos']['verdict'],
                       'business_l1_cents':s['chaos']['source_to_business_l1_cents'],
-                      'wrong_published_groups':len(s['chaos']['published']['false_published_groups']),
+                      'wrong_published_groups':s['chaos']['incorrect_published_group_count'],
+                      'unannounced_missing_groups':s['chaos']['unannounced_missing_group_count'],
+                      'exposed_business_error_groups':s['chaos']['exposed_business_error_groups'],
                       'source_rows':case['input_rows']['chaos'],
                       'process_events':case['process_event_count'],
                   })
