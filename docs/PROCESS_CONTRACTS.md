@@ -167,10 +167,14 @@ Optionally, provide `held/clean.csv` and `held/chaos.csv` containing
 
 The evaluator compares published outputs against the independent process
 truth and also against the source-implied oracle, reporting both error
-sources without improperly adding absolute errors. It requires the
-private answer key locally and verifies source and SQL reference-file
-hashes before scoring. Keep the private answer key and event ledger
-outside the platform's input directory.
+sources without improperly adding absolute errors. **A missing entire
+reporting group counts as an unannounced business omission, not a correct
+published row.** The score separates `incorrect_published_group_count`,
+`unannounced_missing_group_count`, and
+`exposed_business_error_groups`, alongside the correct business-value
+coverage. It requires the private answer key locally and verifies source
+and SQL reference-file hashes before scoring. Keep the private answer
+key and event ledger outside the platform's input directory.
 
 ## Faults and observable controls
 
