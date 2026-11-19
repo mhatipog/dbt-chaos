@@ -372,7 +372,7 @@ def to_markdown(report: dict) -> str:
     lines = [
         "# dbt-chaos — evidence-gated source maintenance",
         "",
-        f"Experiment: \`{report['experiment']}\`",
+        f"Experiment: `{report['experiment']}`",
         "",
     ]
     if "results" in report:
