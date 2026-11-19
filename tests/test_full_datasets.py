@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+from copy import deepcopy
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -10,7 +11,7 @@ import unittest
 
 from dbt_chaos.commerce import oracle, source_contract_alerts
 from dbt_chaos.full_datasets import (
-    Profile, ScriptedDatasetPlanner, apply_proposal, build_corpus, clean_dataset,
+    Profile, ScriptedDatasetPlanner, absolute_group_error, apply_proposal, build_corpus, clean_dataset,
     export_corpus, generate_events, parse_profile, parse_proposal,
     replay_events, ticket_for, validate_new_value,
 )
@@ -79,6 +80,37 @@ class FullDatasetTests(unittest.TestCase):
         for oid, cents in refunds.items():
             self.assertLessEqual(cents, captures[oid])
         self.assertEqual([], source_contract_alerts(tables))
+
+    def test_group_error_not_masked_by_segment_reclassification(self):
+        _, truth = clean_dataset(Profile())
+        before = oracle(truth)
+        modified = deepcopy(truth)
+        target = next(c for c in modified["customers"]
+                      if c["customer_id"] == 33 and c["version"] == 2)
+        self.assertEqual("business", target["segment"])
+        target["segment"] = "retail"
+        after = oracle(modified)
+        # A financially large segment misclassification has ZERO net drift.
+        self.assertEqual(sum(before.values()), sum(after.values()))
+        self.assertGreater(absolute_group_error(before, after), 0)
+        self.assertEqual(0, absolute_group_error(before, before))
+        self.assertEqual([], source_contract_alerts(modified))
+
+    def test_model_profile_without_history_is_rejected_with_reason(self):
+        class MissingHistory(StubLLM):
+            def design(self, seed):
+                return json.dumps({
+                    "customers": 12, "orders": 480, "cancel_percent": 0,
+                    "capture_percent": 90, "refund_percent": 21,
+                    "history_percent": 0,
+                })
+        agent = MissingHistory()
+        corpus = build_corpus(planner=agent, steps=1)
+        self.assertFalse(corpus["profile_accepted"])
+        self.assertIn("history", corpus["profile_fallback_reason"])
+        self.assertEqual(64, corpus["profile"].customers)
+        self.assertTrue(corpus["raw_profile_proposal"])
+        self.assertEqual([], source_contract_alerts(corpus["truth"]))
 
     def test_profile_validation_and_fallback(self):
         raw = json.dumps({"customers": 24, "orders": 120,
