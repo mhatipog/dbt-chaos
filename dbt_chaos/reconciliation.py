@@ -199,8 +199,18 @@ def make_scenarios(seed: int = 20261119) -> dict[str, Any]:
     provider["amount_cents"] = 2900
     insert("psp_and_gl_corrupted_bank_catches", op, wrong_psp, 5,
            "Scripted PSP plus internal journal error; independent bank remains correct")
+    # This deliberately adversarial *counterexample* makes ALL observed
+    # amounts agree while preserving the root labels. A root label by itself
+    # cannot authenticate source independence or guarantee correctness.
+    all_wrong = deepcopy(wrong_psp)
+    affected_day = provider["batch_day"]
+    bank_entry = next(x for x in all_wrong["bank_batches"]
+                      if x["batch_day"] == affected_day)
+    bank_entry["net_cents"] += 2000
+    insert("all_claimed_feeds_agree_on_wrong_value", op, all_wrong, 5,
+           "Scripted joint upstream corruption: operational, PSP, GL and bank all agree incorrectly")
     # Bank feeds cannot masquerade as a distinct independence root if they
-    # are really derived from the PSP: validation will reject such metadata.
+    # are really derived from the PSP: mere text labels cannot prove this.
     return {"seed": seed, "events": events, "truth": truth,
             "cases": cases, "original_provider": evidence}
 
@@ -360,8 +370,18 @@ def score_against_process(source: dict, reconciled: dict,
     released = {key: value for key, value in candidate.items()
                 if key not in held}
     score = score_publication(expected, released, held)
+    source_l1 = absolute_group_error(expected, candidate)
+    detectability = (
+        "no_business_error" if source_l1 == 0 else
+        "observable_inconsistency" if reconciled["findings"] else
+        "not_yet_observable" if reconciled["status"] == "pending_evidence" else
+        "unobservable_with_provided_evidence"
+    )
     return {
-        **score, "source_error_l1_cents": absolute_group_error(expected, candidate),
+        **score, "source_error_l1_cents": source_l1,
+        "detectability": detectability,
+        "platform_should_be_penalized_for_missing_detection": (
+            detectability == "observable_inconsistency"),
         "detected_dispute_count": len(reconciled["findings"]),
         "undetectable_from_delivered_snapshot": (
             score["status"] == "silently_wrong" and
