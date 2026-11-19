@@ -6,7 +6,8 @@ import json
 import unittest
 
 from dbt_chaos.external_challenge import (
-    FORMAT, export_external_challenge, score_external_challenge,
+    FORMAT, export_external_challenge,
+    export_recorded_qwen_starter_challenge, score_external_challenge,
 )
 from dbt_chaos.full_datasets import (
     ScriptedDatasetPlanner, build_corpus, export_corpus,
@@ -50,6 +51,39 @@ class ExternalChallengeTests(unittest.TestCase):
             w.writerow(("order_day", "segment"))
             for key in sorted(groups):
                 w.writerow(key.split("|", 1))
+
+    def test_one_command_recorded_qwen_starter_needs_no_model_or_dbt(self):
+        summary = export_recorded_qwen_starter_challenge(
+            public_dir=self.public, private_dir=self.private)
+        self.assertTrue(summary["verified_source_corpus"])
+        self.assertTrue(summary["separation_verified"])
+        self.assertEqual(2000, summary["source_business_l1_cents"])
+        self.assertIn("recorded", summary["model"])
+        self.assertIn("without running a new model",
+                      summary["starter_provenance"])
+        from dbt_chaos.audit_corpus import read_tables
+        clean = read_tables(self.public, "inputs/clean")
+        chaos = read_tables(self.public, "inputs/chaos")
+        before = next(r for r in clean["payments"] if r["row_id"] == 30669)
+        after = next(r for r in chaos["payments"] if r["row_id"] == 30669)
+        self.assertEqual(4900, before["amount_cents"])
+        self.assertEqual(2900, after["amount_cents"])
+        self.assertEqual(
+            {k: v for k, v in before.items() if k != "amount_cents"},
+            {k: v for k, v in after.items() if k != "amount_cents"},
+        )
+        self.assertFalse((self.public / "answer_key.json").exists())
+        self.assertTrue((self.private / "answer_key.json").exists())
+        key = json.loads((self.private / "answer_key.json").read_text())
+        self.export_gold("clean", key["expected_business"])
+        self.export_gold("chaos", key["expected_given_source"]["chaos"])
+        result = score_external_challenge(
+            public_dir=self.public, answer_key=self.private / "answer_key.json",
+            published_dir=self.published)
+        self.assertEqual("garbage_passed_through",
+                         result["results"]["chaos"]["verdict"])
+        self.assertEqual(2000,
+                         result["results"]["chaos"]["source_to_process_l1_cents"])
 
     def test_independent_truth_never_appears_in_public_exports(self):
         summary = self.create()
