@@ -1,0 +1,45 @@
+name: Native dbt quarantine and safe publication (research)
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/commerce_sql/models/quality/**'
+      - 'dbt_chaos/commerce_sql/models/stg_payments.sql'
+      - 'dbt_chaos/commerce_runner.py'
+      - 'tests/test_native_quality.py'
+      - '.github/workflows/native-quality.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/commerce_sql/models/quality/**'
+      - 'dbt_chaos/commerce_sql/models/stg_payments.sql'
+      - 'dbt_chaos/commerce_runner.py'
+      - 'tests/test_native_quality.py'
+      - '.github/workflows/native-quality.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-dbt-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - name: Exercise native SQL tables and publication states against actual DuckDB
+        run: python -m unittest discover -s tests -p test_native_quality.py -v
+      - name: Ensure default commerce behaviour is not changed by opt-in models
+        run: python -m unittest discover -s tests -p test_commerce.py -v
+      - name: Validate default source and model contracts
+        run: python -m unittest discover -s tests -p test_full_datasets.py -v
