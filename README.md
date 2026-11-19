@@ -4,6 +4,47 @@
 
 Status: experimental v0.2. The framework is synthetic-only and makes no claim to exercise every possible real-world fault.
 
+## Start here: measure garbage in → trustworthy output
+
+The **[practical user guide](docs/USABLE_WORKFLOW.md)** now provides three
+fully reproducible workflows:
+
+1. **Immediate real dbt demonstration** (no LLM needed): reapply a
+   previously recorded genuine weak-model refund mistake, then compare
+   unprotected dbt, native quarantine and an evidence-gated maintainer.
+2. **Actual local weak-LLM chain**: ask a free 0.5B model to act in good faith
+   over 20 data maintenance handoffs; export every synthetic source snapshot
+   and grade final business output independently.
+3. **Bring your own data platform**: load public clean and chaotic CSVs into
+   your own isolated dbt/Fabric/Databricks pipeline, keep the process oracle
+   private, then score the platform's `clean.csv` / `chaos.csv` output.
+   No production credentials or remote actions required.
+
+After installing real dbt dependencies:
+
+```bash
+pip install -e '.[dbt]'
+dbt-chaos evidence-demo --out demo.json --markdown-out demo.md
+```
+
+For a completed weak-LLM dataset corpus:
+
+```bash
+dbt-chaos export-challenge /path/to/corpus/relay \
+  --public-dir challenge-public --private-dir challenge-private
+
+dbt-chaos score-challenge \
+  --public-dir challenge-public \
+  --answer-key challenge-private/answer_key.json \
+  --published-dir your-platform-outputs \
+  --out platform-assessment.json --fail-on-silent
+```
+
+This evaluates the **reference synthetic commerce contract** on any platform;
+it does not yet infer the semantics of arbitrary user schemas. It deliberately
+distinguishes **an LLM edit held for review**, **a source row quarantined**,
+**an alert raised**, and **a wrong business value actually published**.
+
 ## Verified results
 
 On 17 November 2026, **120 actual dbt/DuckDB experiments** completed on public GitHub-hosted runners: 20 synthetic individual faults × 6 strategies, without infrastructure errors. Correct scenarios: full refresh 20/20, source-version CDC 20/20, ingestion-offset 20/20, rolling lookback 17/20, inclusive watermark 15/20, strict watermark 13/20. Incorrect results escaped the four basic dbt tests. The 20/20 outcomes are limited to this suite, not general reliability guarantees.
