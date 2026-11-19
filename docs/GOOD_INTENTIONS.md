@@ -128,6 +128,15 @@ Relevant recent work (not exhaustive):
   limits of judging software engineering agents with available benchmarks.
 - [Agent Error Simulator (2026)](https://cs.iit.edu/~scs/assets/files/bateman2026agenterrorsimulator.pdf):
   controlled faults in agent workflows.
+- [When LLMs Play the Telephone Game (ICLR 2025)](https://proceedings.iclr.cc/paper_files/paper/2025/hash/dbdea7859f1d2fc10f2c9e79b8f5ae54-Abstract-Conference.html):
+  iterated LLM cultural transmission is established prior art; the mere idea
+  of 20 sequential reinterpretations is **not** novel.
+- [LLM as a Broken Telephone (ACL 2025)](https://aclanthology.org/2025.acl-long.371/):
+  semantic information distortion through iterative generation.
+- [Handoff State Continuity Benchmark (2026)](https://www.alphaxiv.org/abs/2610.36523):
+  work continuation and repository-evidence retrieval under inherited state.
+- [The Handoff Tax (2026)](https://www.alphaxiv.org/abs/2608.24358):
+  impact of inherited information on coding-agent task quality.
 - [SABER: Small Actions, Big Errors (2025)](https://cdn.amazon.science/74/ec/867848fa44bda73d6237dfd6183d/saber-tau-bench-verified.pdf):
   consequences of mutating agent actions.
 - [GitHub standard public runners](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job):
