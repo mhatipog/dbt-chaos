@@ -117,6 +117,37 @@ single run illustrates weak-agent misinterpretation, **not proven
 telephone-specific degradation**. A full-history matched control is
 required to test that claim.
 
+### Paired handoff-context result — 19 November 2026
+
+[GitHub Actions run 44533873836](https://github.com/mhatipog/dbt-chaos/actions/runs/44533873836)
+**passed** both scripted real-dbt calibration and two separate local 0.5B
+Qwen-driven real-dbt runs. With the same seed, weights, tasks, and clean
+initial state, the two context policies produced **identical trajectories**:
+
+| Iteration | Handoff-only action | Full-history action | Signed business error in *both* |
+|---|---|---|---|
+| 1 | `simplify_customer_lookup` | same | 0 cents |
+| 2 | `record_customer_version` | same | +10,000 cents |
+| 3 | `record_customer_version` | same | +20,000 cents |
+| 4 | `record_customer_version` | same | +30,000 cents |
+
+Both first diverged from process truth at iteration 2, with silent output
+corruption and zero invalid model outputs.
+
+**Negative but important result:** Under this seed and action menu, **full
+history was not better than the lossy telephone-game condition**. Thus the
+pilot does *not* support a causal claim that handoff information loss caused
+the observed corruption. A likely alternative is that the low-capability
+model repeatedly selects an irrelevant action from a restricted menu, and
+that the explicitly offered SQL simplification directly seeds a known
+failure. This is now a verified technical research platform, not yet
+evidence of the desired telephone-game mechanism.
+
+A stronger follow-up must provide per-task actionable documentation,
+counterbalance task wording, compare multiple models/seeds and action
+menus, and especially permit independently sandboxed free-form edits.
+Report negative results, not just the highest-error trajectories.
+
 ## What this does NOT establish
 
 - The PoC's operations are predefined; the model chooses them using natural
