@@ -15,7 +15,7 @@ user's schema, safe execution of their own SQL, automatic deployment to
 Fabric/Databricks, real-world incident-rate estimates, or a claim that
 every weak-model decision represents a realistic human intention.
 
-## 1. One-command real-db t demonstration — no LLM to install
+## 1. One-command real-dbt demonstration — no LLM to install
 
 From the checked-out research branch:
 
@@ -97,7 +97,22 @@ tier**, not a superior source-only detector.
 
 ## 3. Test your own SQL platform without connecting it to dbt-chaos
 
-Use any previously generated full corpus (`relay`, `anchored`, or another
+**Fastest onboarding — no LLM, database, dbt, or paid API required:**
+
+```bash
+python -m pip install -e .
+dbt-chaos export-challenge --starter \
+  --public-dir assessments/public-platform-challenge \
+  --private-dir assessments/hidden-answer-key
+```
+
+This creates the clean-versus-corrupted three-table datasets by
+**replaying the actual accepted €49 → €29 refund edit captured from Qwen
+on 19 Nov 2026**. The new command itself does *not* run an LLM, generate
+a different model decision, or claim to reproduce a 20-step model run.
+It is a real model-action regression fixture for a first-time user.
+
+**More varied challenges:** use any previously generated full corpus (`relay`, `anchored`, or another
 `full_datasets` run) to create a **portable two-case challenge**.
 
 ```bash
