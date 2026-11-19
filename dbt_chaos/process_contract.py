@@ -475,6 +475,18 @@ def export_contract_challenge(*, contract_path: Path, seed: int, fault: str,
             }
     contract_bytes = (json.dumps(contract, indent=2, sort_keys=True)+"\n").encode()
     (public_dir / "contract.json").write_bytes(contract_bytes)
+    # Give the user a human-inspectable SQL model and DQ probes, generated
+    # strictly from allowed identifiers, not from arbitrary model-written SQL.
+    from .contract_sql import build_sql_pack
+    sql_dir = public_dir / "sql"
+    sql_dir.mkdir()
+    support_files = {}
+    for file_name, sql_text in build_sql_pack(contract).items():
+        relative = f"sql/{file_name}"
+        data = sql_text.encode("utf8")
+        (sql_dir / file_name).write_bytes(data)
+        support_files[relative] = {"sha256": sha256(data).hexdigest(),
+                                   "bytes": len(data)}
     fingerprint = sha256(json.dumps({
         "seed": seed, "fault": fault,
         "contract_sha256": sha256(contract_bytes).hexdigest(),
@@ -485,6 +497,7 @@ def export_contract_challenge(*, contract_path: Path, seed: int, fault: str,
         "workload": contract["name"],
         "fault": fault, "seed": seed, "generator_type": "scripted_calibration_not_llm",
         "input_files": files,
+        "support_files": support_files,
         "contract_sha256": sha256(contract_bytes).hexdigest(),
         "publication_columns": ["period", "group", "amount_cents"],
         "source_truth_exposed": False,
@@ -497,7 +510,9 @@ def export_contract_challenge(*, contract_path: Path, seed: int, fault: str,
             "The supplied contract.json declares table and column names, "
             "the party→document→movement relationships, latest-version "
             "semantics, status/currency conditions and positive/negative "
-            "movement kinds.\n\n"
+            "movement kinds. The optional sql/reference_query.sql is a "
+            "reference implementation; sql/quality_checks.sql emits "
+            "source-only issues. Neither query has access to hidden truth.\n\n"
             "Output one CSV per scenario named clean.csv and chaos.csv with "
             "the exact header: period,group,amount_cents. "
             "These are calendar day and the latest party dimension. "
@@ -598,6 +613,13 @@ def score_contract_challenge(*, public_dir: Path, answer_key: Path,
     }
     if set(manifest["input_files"]) != expected_files:
         raise ValueError("manifest has missing or unrecognized input files")
+    for rel, spec in manifest.get("support_files", {}).items():
+        if rel not in ("sql/reference_query.sql", "sql/quality_checks.sql"):
+            raise ValueError("unrecognized SQL support file")
+        support = (public_dir / rel).read_bytes()
+        if (sha256(support).hexdigest() != spec["sha256"]
+                or len(support) != spec["bytes"]):
+            raise ValueError(f"SQL support changed: {rel}")
     for rel, spec in manifest["input_files"].items():
         bytes_ = (public_dir / rel).read_bytes()
         if (sha256(bytes_).hexdigest() != spec["sha256"]
