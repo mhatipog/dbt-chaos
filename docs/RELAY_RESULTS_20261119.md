@@ -72,6 +72,52 @@ This is a **genuine model-proposed, executed source mistake with
 silent business corruption**, not a fault inserted by the scripted
 calibration.
 
+## Actual platform response: native dbt protection replay
+
+A **separate second GitHub Actions run**
+([44587779645](https://github.com/mhatipog/dbt-chaos/actions/runs/44587779645))
+downloaded the EXACT archived five model chains from the original run,
+verified their full source/evidence manifests and replayed the final
+tables through our **real opt-in native dbt quarantine and publication
+models**. Six publication-metric unit tests and all five native executions
+passed. No model was rerun and no source fault was inserted.
+
+| Frozen model final source | Basic dbt publication | Native dbt gate | Actually quarantined | Correct business-value group coverage |
+|---|---|---|---:|---:|
+| Seed 20261119 relay (wrong refund) | **Silent error €20** | **Silent error €20** | 0 | 97.2779% |
+| Seed 20261119 anchored | Correct | Correct | 0 | 100% |
+| Seed 20261119 fresh (benign duplicate order) | Correct, source warning | Correct, source warning | 0 | 100% |
+| Seed 20261120 relay | Correct | Correct | 0 | 100% |
+| Seed 20261120 anchored | Correct | Correct | 0 | 100% |
+
+**Coverage metric:** 97.2779% means that percentage of absolute
+original business revenue belongs to *groups whose published
+values are exactly correct*. It does **not** mean that 2.7221% of money
+was lost: the *actual incorrect amount was only €20* in one group.
+
+The native payment-side quality rules **cannot observe the difference**
+between the genuine €49 refund and the plausible but false €29 refund.
+The result therefore confirms the expected information limit through
+real SQL execution: **correct dbt transformations and payment quarantines
+do not guarantee correct business facts when a human/agent already
+altered a plausible source record.**
+
+The fresh-policy arm's identical ORDER replay triggered existing
+`source_duplicate_orders` tests and was deduplicated by ordinary
+staging, but the native **payment-only** quarantine model did not
+quarantine that order. That is a clearly documented native-coverage
+gap, not proof that every duplicate is governed by its native rules.
+
+The source business event ledger is available only to the independent
+evaluator, not to the native gate. A privileged process-log
+reconciliation may restore the correct refund, but is a separate
+information tier rather than an inferred repair.
+
+For reproduction:
+[relay native replay code](../dbt_chaos/relay_platform_replay.py),
+[publication scoring tests](../tests/test_relay_platform_replay.py),
+and [native replay workflow](../.github/workflows/relay-native-replay.yml).
+
 ## What the comparison does NOT prove
 
 - Policy-anchored step 14 produced a **malformed JSON proposal**, which
