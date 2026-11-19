@@ -1,0 +1,118 @@
+name: Usable evidence-gated chaos assessment (real dbt)
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/evidence_gate.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_evidence_gate.py'
+      - 'pyproject.toml'
+      - '.github/workflows/evidence-gate.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/evidence_gate.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_evidence_gate.py'
+      - 'pyproject.toml'
+      - '.github/workflows/evidence-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dbt-chaos-evidence-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  complete-gated-assessment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 19
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install reproducible real dbt dependencies
+        run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - name: Check syntax and evidence-gate tests (including real dbt)
+        run: |
+          python -m compileall -q dbt_chaos
+          python -m unittest discover -s tests -p test_evidence_gate.py -v
+      - name: Confirm original commerce benchmark unchanged
+        run: python -m unittest discover -s tests -p test_commerce.py -v
+      - name: One-command CLI recorded weak-model refund reproduction
+        run: |
+          dbt-chaos evidence-demo \
+            --out /tmp/evidence-gate/demo.json \
+            --markdown-out /tmp/evidence-gate/demo.md
+      - name: Generate full synthetic source snapshots from calibration
+        run: |
+          python -m dbt_chaos.full_datasets --agent scripted \
+            --seed 20261119 --steps 3 --execute-dbt \
+            --output-dir /tmp/evidence-gate/frozen-calibration
+      - name: Evaluate the frozen sequence without rerunning a model
+        run: |
+          dbt-chaos evaluate-chain /tmp/evidence-gate/frozen-calibration \
+            --tier source_only --fail-on-silent \
+            --out /tmp/evidence-gate/replay.json \
+            --markdown-out /tmp/evidence-gate/replay.md
+      - name: Assert actual output provenance, no unearned model claims
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path('/tmp/evidence-gate')
+          demo=json.loads((root/'demo.json').read_text())
+          assert demo['experiment']=='recorded_qwen_refund_evidence_gate_demonstration_v1'
+          assert demo['results']['ungated']['real_dbt']['false_published_l1_cents']==2000
+          assert demo['results']['ungated']['native_dbt']['false_published_l1_cents']==2000
+          assert demo['results']['source_only']['gate']['decision']=='review_required'
+          assert demo['results']['source_only']['real_dbt']['status']=='correctly_published'
+          assert demo['results']['attested']['real_dbt']['status']=='correctly_published'
+          assert demo['results']['source_only']['native_quarantined_count']==0
+          assert demo['results']['source_only']['source_test_alerts']==[]
+          replay=json.loads((root/'replay.json').read_text())
+          assert replay['source_model']=='scripted_fixture_not_llm'
+          assert replay['archived_model_trace_verified']
+          assert replay['agent_actions_not_regenerated']
+          assert replay['original_ungated_publication']['false_published_l1_cents']>0
+          assert replay['guarded_dbt_publication']['false_published_l1_cents']==0
+          assert replay['actions_held_for_review']>=2
+          assert replay['gate_evidence_tier']=='source_only'
+          assert (root/'demo.md').read_text().startswith('# dbt-chaos')
+          print('Evidence gate reproducible, accepted output correct, provenance explicit.')
+          PY
+      - name: Build Python wheel and verify native dbt models are packaged
+        run: |
+          python -m pip wheel --disable-pip-version-check --no-deps . -w /tmp/wheels
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          candidates=list(Path('/tmp/wheels').glob('dbt_chaos-*.whl'))
+          assert len(candidates)==1,candidates
+          with ZipFile(candidates[0]) as z:
+              names=set(z.namelist())
+              expected=(
+                  'dbt_chaos/commerce_sql/models/quality/quality_release_gate.sql',
+                  'dbt_chaos/commerce_sql/models/quality/quality_gold_published.sql',
+                  'dbt_chaos/commerce_sql/models/quality/quality_quarantine_payments.sql',
+              )
+              for name in expected:
+                  assert name in names,name
+          print('Wheel contains native dbt quality and publication models.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dbt-chaos-usable-evidence-gate-assessment
+          path: |
+            /tmp/evidence-gate/demo.json
+            /tmp/evidence-gate/demo.md
+            /tmp/evidence-gate/replay.json
+            /tmp/evidence-gate/replay.md
+          retention-days: 2
+          if-no-files-found: warn
