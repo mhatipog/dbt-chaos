@@ -1,0 +1,40 @@
+name: Multi-source reconciliation: independent evidence and lateness
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/reconciliation.py'
+      - 'tests/test_reconciliation.py'
+      - '.github/workflows/reconciliation.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/reconciliation.py'
+      - 'tests/test_reconciliation.py'
+      - '.github/workflows/reconciliation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multi-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  observable-reference-reconciler:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pure-Python research harness
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Validate evidence independence, delayed settlement and original Qwen fault
+        run: python -m unittest discover -s tests -p test_reconciliation.py -v
+      - name: Reject syntax errors and verify source files
+        run: python -m compileall -q dbt_chaos
