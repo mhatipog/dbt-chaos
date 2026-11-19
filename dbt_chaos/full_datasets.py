@@ -486,6 +486,9 @@ def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
                        for name, rows in admitted.items()},
             "current_transform": ("direct_customer_join" if logic_fault != "none"
                                   else "latest_customer_version"),
+            # Realistically available dbt source-test feedback. This is NOT the
+            # independent business ledger or unimplemented enhanced monitor.
+            "existing_source_test_alerts": source_contract_alerts(admitted),
         }
         if context_mode == "handoff":
             view["prior_note"] = messages[-1]["note"] if messages else "Initial clean setup"
