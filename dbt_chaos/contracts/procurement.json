@@ -1,0 +1,52 @@
+{
+  "format": "dbt_chaos_declarative_process_v1",
+  "name": "procurement_settlements",
+  "roles": {
+    "party": {
+      "table": "suppliers",
+      "id": "supplier_id",
+      "dimension": "cost_center"
+    },
+    "document": {
+      "table": "invoices",
+      "id": "invoice_id",
+      "party_fk": "supplier_id",
+      "date": "invoice_day",
+      "gross": "invoice_gross_cents",
+      "status": "invoice_status",
+      "currency": "currency"
+    },
+    "movement": {
+      "table": "settlements",
+      "id": "settlement_id",
+      "document_fk": "invoice_id",
+      "kind": "settlement_kind",
+      "amount": "settled_cents"
+    }
+  },
+  "semantics": {
+    "included_status": "approved",
+    "currency": "EUR",
+    "signs": {
+      "payment": 1,
+      "refund": -1
+    },
+    "dimensions": [
+      "IT",
+      "Operations",
+      "Facilities",
+      "Research"
+    ]
+  },
+  "generation": {
+    "parties": 40,
+    "documents": 250,
+    "history_percent": 23,
+    "approved_percent": 78,
+    "movement_percent": 91,
+    "credit_percent": 37,
+    "retry_percent": 6,
+    "start_day": "2026-01-01",
+    "day_span": 60
+  }
+}
