@@ -235,19 +235,25 @@ def compare_against_business_truth(
         verdict = "business_correct"
     # Quarantining an event later proven genuine is *not* a valid correction.
     attested_keys = {
-        (table, r["row_id"], tuple(r.get(c) for c in COLUMNS[table]))
+        (table, row["row_id"]): row
         for table in ("customers", "orders", "payments")
-        for r in (attested_source or {}).get(table, [])
+        for row in (attested_source or {}).get(table, [])
     }
-    verified_true_quarantine = sum(
-        (q["table"], q["row_id"],
-         tuple(next((r.get(c) for c in COLUMNS[q["table"]])
-                    for r in source_before[q["table"]]
-                    if r["row_id"] == q["row_id"]), ())) in attested_keys)
-        for q in plan.quarantined if q["disposition"] == "quarantine"
-    ) if attested_source is not None else None
+    verified_true_quarantine = 0
+    if attested_source is not None:
+        for entry in plan.quarantined:
+            if entry["disposition"] != "quarantine":
+                continue
+            key = (entry["table"], entry["row_id"])
+            delivered_row = next(
+                (row for row in source_before[entry["table"]]
+                 if row["row_id"] == entry["row_id"]), None)
+            if key in attested_keys and delivered_row == attested_keys[key]:
+                verified_true_quarantine += 1
     return {
-        "policy": policy, "verdict": verdict, "published_group_count": len(keys - held),
+        "policy": policy, "verdict": verdict,
+        "published_group_count": len(set(observed) - held),
+        "evaluated_publication_groups": len(keys - held),
         "held_groups": sorted(f"{d}|{s}" for d, s in held),
         "incorrect_published_groups": [f"{d}|{s}" for d, s in incorrectly_published],
         "incorrect_published_group_count": len(incorrectly_published),
