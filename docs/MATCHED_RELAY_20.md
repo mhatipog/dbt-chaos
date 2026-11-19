@@ -128,6 +128,17 @@ python -m dbt_chaos.audit_corpus /tmp/relay-actual/relay
   discusses how synthetic event logs need structural and temporal fidelity.
 - [Data quality in object-centric event data (2026)](https://link.springer.com/article/10.1007/s44311-026-00043-x)
   classifies imperfect event records in process analytics.
+- [Handoff Debt (EMNLP 2026)](https://aclanthology.org/2026.emnlp-main.738/)
+  already compares repository state, raw traces, natural-language summaries
+  and structured handoff notes for coding-agent task continuation.
+  Context-format ablation alone is **not a new discovery**.
+- [Handoff State Continuity Benchmark (October 2026)](https://arxiv.org/abs/2610.36523)
+  evaluates recovery and continuation across 1,039 inherited agent states.
+- [Semantic Context Handoff (18 November 2026 preprint)](https://arxiv.org/abs/2611.24357)
+  proposes maintaining independently addressable evidence so compressed
+  descriptions need not permanently destroy relevant facts.
+  Its evidence/summary distinction is a strong comparison for our business
+  charter versus process-ledger truth, but we must not conflate the two.
 - [Snowflake data-eng-bench (2026)](https://www.snowflake.com/en/blog/engineering/data-eng-bench-data-engineering-agent-benchmark/)
   and [dbt Labs ADE-bench](https://www.getdbt.com/blog/ade-bench-dbt-data-benchmarking)
   already evaluate data-agent tasks and business correctness.
