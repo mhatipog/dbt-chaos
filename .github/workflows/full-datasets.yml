@@ -5,16 +5,20 @@ on:
     branches: [research/good-intentions-handoff-20261119]
     paths:
       - 'dbt_chaos/full_datasets.py'
+      - 'dbt_chaos/audit_corpus.py'
       - 'dbt_chaos/commerce.py'
       - 'dbt_chaos/commerce_runner.py'
       - 'tests/test_full_datasets.py'
+      - 'tests/test_audit_corpus.py'
       - '.github/workflows/full-datasets.yml'
   pull_request:
     paths:
       - 'dbt_chaos/full_datasets.py'
+      - 'dbt_chaos/audit_corpus.py'
       - 'dbt_chaos/commerce.py'
       - 'dbt_chaos/commerce_runner.py'
       - 'tests/test_full_datasets.py'
+      - 'tests/test_audit_corpus.py'
       - '.github/workflows/full-datasets.yml'
   workflow_dispatch:
 
@@ -38,11 +42,14 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
       - run: python -m unittest discover -s tests -p 'test_full_datasets.py' -v
+      - run: python -m unittest discover -s tests -p 'test_audit_corpus.py' -v
       - run: python -m unittest discover -s tests -p 'test_handoff.py' -v
       - name: Generate complete controlled source tables and run real dbt
         run: |
           python -m dbt_chaos.full_datasets --agent scripted --steps 3 --execute-dbt \
             --output-dir /tmp/full-datasets/calibration
+      - name: Independent portable corpus replay audit
+        run: python -m dbt_chaos.audit_corpus /tmp/full-datasets/calibration
       - name: Check exported CSV integrity and process-vs-output mismatch
         run: |
           python - <<'PY'
