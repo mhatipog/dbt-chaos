@@ -77,14 +77,14 @@ jobs:
           from huggingface_hub import hf_hub_download
           path=hf_hub_download(
               repo_id='Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF',
-              filename='qwen2.5-0.5b-coder-instruct-q4_k_m.gguf',
+              filename='qwen2.5-coder-0.5b-instruct-q4_k_m.gguf',
               local_dir='/tmp/handoff-weights')
           print('Model downloaded:',path)
           PY
       - name: Real local low-capability LLM handoffs + actual dbt
         run: |
           python -m dbt_chaos.handoff --agent llama --steps 4 --execute-dbt \
-            --model /tmp/handoff-weights/qwen2.5-0.5b-coder-instruct-q4_k_m.gguf \
+            --model /tmp/handoff-weights/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf \
             --output /tmp/handoff-weak-model.json
       - name: Confirm independently measured, not assumed failure
         run: |
