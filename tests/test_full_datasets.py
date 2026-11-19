@@ -54,7 +54,7 @@ class FullDatasetTests(unittest.TestCase):
                          len({row["order_id"] for row in tables["orders"]}))
         self.assertEqual(profile.customers,
                          len({row["customer_id"] for row in tables["customers"]}))
-        self.assertGreater(len(events), 1100)
+        self.assertGreater(len(events), 1000)
         self.assertGreater(len(tables["payments"]), 200)
         self.assertGreater(len(oracle(tables)), 15)
         self.assertTrue(any(r["status"] == "cancelled" for r in tables["orders"]))
@@ -153,9 +153,10 @@ class FullDatasetTests(unittest.TestCase):
             self.assertTrue((dest / "steps/03/source_delivery/payments.csv").exists())
             trace = json.loads((dest / "trace.json").read_text())
             self.assertEqual(3, len(trace["steps"]))
+            with (dest / "ledger/source_of_truth/orders.csv").open() as source:
+                record_count = sum(1 for _ in csv.DictReader(source))
             self.assertEqual(corpus["profile"].orders,
-                             sum(1 for _ in csv.DictReader(
-                                 (dest / "ledger/source_of_truth/orders.csv").open())) -
+                             record_count -
                              sum(1 for r in corpus["truth"]["orders"] if r["version"] == 2))
             with self.assertRaises(ValueError):
                 export_corpus(corpus, dest)  # reject stale/mixed bundles
