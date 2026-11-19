@@ -122,8 +122,8 @@ def columns_for(contract: dict, role: str) -> tuple[str, ...]:
     raise ValueError("unknown role")
 
 
-def _emit(events: list[dict], kind: str, **fields) -> None:
-    events.append({"event_id": len(events)+1, "type": kind, **fields})
+def _emit(events: list[dict], event_type: str, **fields) -> None:
+    events.append({"event_id": len(events)+1, "type": event_type, **fields})
 
 
 def simulate_process(contract: dict, seed: int) -> list[dict]:
