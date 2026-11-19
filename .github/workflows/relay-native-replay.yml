@@ -1,0 +1,98 @@
+name: Real native dbt protection of frozen 20-step weak-LLM outcomes
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/relay_platform_replay.py'
+      - 'tests/test_relay_platform_replay.py'
+      - '.github/workflows/relay-native-replay.yml'
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: 'Completed 20-step LLM run containing both dataset artifacts'
+        required: true
+        default: '44584273184'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: dbt-chaos-native-frozen-relay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frozen-llm-native-dbt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - name: Unit-test publication scoring without any model access
+        run: python -m unittest discover -s tests -p test_relay_platform_replay.py -v
+      - name: Download ORIGINAL model-generated dataset evidence, seed A
+        uses: actions/download-artifact@v4
+        with:
+          name: weak-llm-20-handoff-seed-20261119
+          run-id: ${{ inputs.source_run_id || '44584273184' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/relay-archives/20261119
+      - name: Download ORIGINAL model-generated dataset evidence, seed B
+        uses: actions/download-artifact@v4
+        with:
+          name: weak-llm-20-handoff-seed-20261120
+          run-id: ${{ inputs.source_run_id || '44584273184' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/relay-archives/20261120
+      - name: Replay seed A through real native dbt quarantine and release tables
+        run: |
+          python -m dbt_chaos.relay_platform_replay \
+            --corpus /tmp/relay-archives/20261119 \
+            --seed 20261119 \
+            --source-run-id ${{ inputs.source_run_id || '44584273184' }} \
+            --output /tmp/native-relay-20261119.json
+      - name: Replay seed B through real native dbt quarantine and release tables
+        run: |
+          python -m dbt_chaos.relay_platform_replay \
+            --corpus /tmp/relay-archives/20261120 \
+            --seed 20261120 \
+            --source-run-id ${{ inputs.source_run_id || '44584273184' }} \
+            --output /tmp/native-relay-20261120.json
+      - name: Assert actual published business correctness, not inferred containment
+        run: |
+          python - <<'PY'
+          import json
+          a={r['mode']:r for r in json.load(open('/tmp/native-relay-20261119.json'))['results']}
+          b={r['mode']:r for r in json.load(open('/tmp/native-relay-20261120.json'))['results']}
+          assert set(a)=={'relay','anchored','fresh'}
+          assert set(b)=={'relay','anchored'}
+          assert all(r['native_actual_sql_executed'] for r in [*a.values(),*b.values()])
+          r=a['relay']
+          assert r['base_dbt']['status']=='silently_wrong',r
+          assert r['native_dbt']['status']=='silently_wrong',r
+          assert r['base_dbt']['false_published_l1_cents']==2000,r
+          assert r['native_dbt']['false_published_l1_cents']==2000,r
+          assert r['native_quarantine_count']==0,r
+          assert a['fresh']['base_dbt']['status']=='correctly_published',a['fresh']
+          assert a['fresh']['native_dbt']['status']=='correctly_published',a['fresh']
+          assert 'source_duplicate_orders' in a['fresh']['original_dbt_source_alerts']
+          for safe in [a['anchored'],a['fresh'],*b.values()]:
+              assert safe['native_dbt']['status']=='correctly_published',safe
+          print('SUCCESS: five original model arms replayed through real native dbt,'
+                'one plausible wrong refund remains silently published; no fabricated repair.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frozen-llm-native-dbt-protection-results
+          path: |
+            /tmp/native-relay-20261119.json
+            /tmp/native-relay-20261120.json
+          retention-days: 2
+          if-no-files-found: warn
