@@ -71,8 +71,11 @@ jobs:
           retention-days: 1
           if-no-files-found: warn
 
+  # Model-weight downloads and CPU inference are explicitly dispatched, not
+  # repeated for every documentation or validator fix. Public-runner compute
+  # stays free and bounded; the deterministic calibration runs on each push.
   weak-llm-datasets:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/research/good-intentions-handoff-20261119'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/research/good-intentions-handoff-20261119'
     needs: process-ledger-and-controls
     runs-on: ubuntu-24.04
     timeout-minutes: 27
