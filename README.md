@@ -27,12 +27,25 @@ pip install -e '.[dbt]'
 dbt-chaos evidence-demo --out demo.json --markdown-out demo.md
 ```
 
-For a completed weak-LLM dataset corpus:
+To test your own isolated platform immediately **without installing
+a model or dbt**, replay our previously recorded real Qwen mistake:
+
+```bash
+pip install -e .
+dbt-chaos export-challenge --starter \
+  --public-dir challenge-public --private-dir challenge-private
+```
+
+For fresh weak-LLM scenarios, replace `--starter` with a generated corpus:
 
 ```bash
 dbt-chaos export-challenge /path/to/corpus/relay \
   --public-dir challenge-public --private-dir challenge-private
+```
 
+Then score whatever that platform actually published:
+
+```bash
 dbt-chaos score-challenge \
   --public-dir challenge-public \
   --answer-key challenge-private/answer_key.json \
