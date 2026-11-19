@@ -13,7 +13,7 @@ from dbt_chaos.process_contract import (
     columns_for, delivered_source_oracle, event_business_oracle,
     export_contract_challenge, project_source, run_reference_from_public,
     run_sqlite_reference, score_contract_challenge, simulate_process,
-    validate_contract,
+    validate_contract, load_contract,
 )
 
 CONTRACTS = (
@@ -22,6 +22,18 @@ CONTRACTS = (
 
 
 class ContractTests(unittest.TestCase):
+    def test_built_in_contracts_match_repository_examples(self):
+        for name in ("procurement", "grants"):
+            with self.subTest(name=name):
+                packaged = load_contract(name)
+                from_path = load_contract(Path("contracts") / f"{name}.json")
+                self.assertEqual(packaged, from_path)
+                self.assertEqual(3, len(packaged["roles"]))
+        with self.assertRaisesRegex(ValueError, "existing bounded JSON"):
+            load_contract("../malicious-contract")
+        with self.assertRaisesRegex(ValueError, "existing bounded JSON"):
+            load_contract("unknown_domain")
+
     def test_contract_validation_rejects_untrusted_dsl_and_ambiguous_columns(self):
         contract = json.loads(CONTRACTS[0].read_text())
         self.assertEqual(contract, validate_contract(contract))
