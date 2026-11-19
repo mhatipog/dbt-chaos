@@ -46,6 +46,26 @@ jobs:
           dbt-chaos export-challenge /tmp/example-corpus \
             --step 2 --public-dir /tmp/public-platform-input \
             --private-dir /tmp/local-hidden-key
+      - name: Independently reproduce real Qwen archived refund without an LLM or dbt
+        run: |
+          dbt-chaos export-challenge --starter \
+            --public-dir /tmp/starter-public-platform-input \
+            --private-dir /tmp/starter-secret-key
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from dbt_chaos.audit_corpus import read_tables
+          pub=Path('/tmp/starter-public-platform-input')
+          key=json.loads(Path('/tmp/starter-secret-key/answer_key.json').read_text())
+          assert key['source_model']=='recorded_qwen_refund_action_not_fresh_llm_inference'
+          assert not (pub/'answer_key.json').exists()
+          before=read_tables(pub,'inputs/clean')
+          after=read_tables(pub,'inputs/chaos')
+          p=next(x for x in before['payments'] if x['row_id']==30669)
+          q=next(x for x in after['payments'] if x['row_id']==30669)
+          assert p['amount_cents']==4900 and q['amount_cents']==2900
+          print('Starter verifies archived genuine model edit; independent truth remains private.')
+          PY
       - name: Calibrate the scorer with a deliberately naive platform
         run: |
           python - <<'PY'
@@ -91,6 +111,13 @@ jobs:
         with:
           name: dbt-chaos-public-platform-challenge-example
           path: /tmp/public-platform-input/
+          retention-days: 2
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dbt-chaos-starter-public-weak-llm-challenge
+          path: /tmp/starter-public-platform-input/
           retention-days: 2
           if-no-files-found: warn
       - uses: actions/upload-artifact@v4
