@@ -72,7 +72,8 @@ def main(argv=None):
     replay_gate.add_argument("--no-native",action="store_true")
     replay_gate.add_argument("--fail-on-silent",action="store_true")
     external=cmd.add_parser("export-challenge",help="Export clean and weak-agent-chaotic CSVs for any data platform; keep answer key separate")
-    external.add_argument("corpus",type=Path)
+    external.add_argument("corpus",type=Path,nargs="?",help="Existing full agent corpus; omit with --starter")
+    external.add_argument("--starter",action="store_true",help="Replay one archived real Qwen refund edit; no model or dbt required")
     external.add_argument("--public-dir",type=Path,required=True)
     external.add_argument("--private-dir",type=Path,required=True)
     external.add_argument("--step",type=int)
@@ -86,10 +87,18 @@ def main(argv=None):
     external_score.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
     if args.command=="export-challenge":
-        from .external_challenge import export_external_challenge
-        result=export_external_challenge(
-            corpus=args.corpus,public_dir=args.public_dir,
-            private_dir=args.private_dir,step=args.step)
+        from .external_challenge import (export_external_challenge,
+                                         export_recorded_qwen_starter_challenge)
+        if args.starter == bool(args.corpus):
+            parser.error("choose exactly one: an existing corpus OR --starter")
+        if args.starter and args.step is not None:
+            parser.error("--step applies only to existing corpora, not --starter")
+        result=(export_recorded_qwen_starter_challenge(
+                    public_dir=args.public_dir,private_dir=args.private_dir)
+                if args.starter else
+                export_external_challenge(
+                    corpus=args.corpus,public_dir=args.public_dir,
+                    private_dir=args.private_dir,step=args.step))
         print(json.dumps(result,indent=2,sort_keys=True))
         return 0
     if args.command=="score-challenge":
