@@ -331,6 +331,7 @@ def apply_scripted_fault(contract: dict, clean: dict[str, list[dict]],
         "applied": False,
     }
     if fault == "none":
+        detail["business_source_l1_cents"] = 0
         return altered, detail
     if fault == "duplicate_delivery":
         old = altered[mr["table"]][0]
