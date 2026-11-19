@@ -61,7 +61,10 @@ jobs:
           print('CALIBRATION OK; all assertions are scripted, NOT LLM evidence')
           PY
 
+  # Run expensive, full-model 20-step trials only on explicit dispatch.
+  # Pushes still run the fast and real-dbt deterministic instrument checks.
   genuine-llm-matched-relays:
+    if: github.event_name == 'workflow_dispatch'
     needs: design-and-instrument-calibration
     strategy:
       fail-fast: false
