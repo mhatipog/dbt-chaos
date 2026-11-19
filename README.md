@@ -70,8 +70,22 @@ from these single trajectories.** Neither model generated a valid initial
 process profile; the baseline event ledger came from our deterministic
 simulator, while the model-authored edits were genuinely executed.
 
+The [25-case protection matrix](https://github.com/mhatipog/dbt-chaos/actions/runs/44554736365)
+evaluates unprotected dbt, monitoring, row quarantine, strict release
+gating and external-ledger recovery against the SAME source mistakes.
+It includes a benign retry to measure unnecessary rejection of good data.
+A separate [native dbt quarantine implementation](https://github.com/mhatipog/dbt-chaos/actions/runs/44557372785)
+also passed actual DuckDB tests, with opt-in SQL tables for rejected rows,
+accepted payments, held reporting groups and released gold output.
+
+**Protection evidence is tiered:** source-only policies must not access the
+business ledger; fully trusted event replay is a separate upper bound, not
+an inferred repair. The default SQL and benchmarks remain unchanged.
+
 Details: [full dataset method](docs/FULL_DATASETS.md) ·
-[observed results](docs/FULL_DATASETS_RESULTS_20261119.md) ·
+[model-generated data results](docs/FULL_DATASETS_RESULTS_20261119.md) ·
+[protection policy findings](docs/PROTECTION_RESULTS_20261119.md) ·
+[native dbt implementation](docs/NATIVE_QUALITY.md) ·
 [handoff research](docs/GOOD_INTENTIONS.md).
 
 ## What is actually implemented?
