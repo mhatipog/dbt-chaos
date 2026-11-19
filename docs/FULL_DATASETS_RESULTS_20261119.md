@@ -79,6 +79,46 @@ SmolLM's process-profile output was malformed; default parameters were
 recorded and used. Both models therefore operated on the same deterministic
 clean ledger.
 
+## Post-hoc detector comparison on the three applied Qwen mistakes
+
+We independently replayed all six exported snapshots and compared three
+levels of detection. These are **three selected mistakes from one trajectory**,
+not a statistically representative detection-rate estimate.
+
+| Model-authored data change | Existing dbt/source tests | Added observable FK/finance checks | External process-ledger comparison |
+|---|---|---|---|
+| Refund €360 → €721, equal to captured amount | Miss | Miss (financially plausible) | **Detects** |
+| Latest customer segment business → retail | Miss | Miss (valid segment) | **Detects** |
+| Delete completed order with surviving payment | Miss | **Detects** missing order for payment (ID 467) | **Detects** |
+
+Thus: existing tests flagged **0/3**, adding referential/financial checks
+would flag **1/3**, and comparison with the authoritative process ledger
+flagged **3/3** of these specific edits.
+
+The extra check is implemented by `enhanced_source_alerts` and explicitly
+**is not represented as an existing dbt test**. It needs to be integrated as
+an optional dbt assertion before claiming pipeline-level detection.
+
+**Information limit:** if a delivered extract is internally consistent but a
+real refund or profile update was lost or altered, no algorithm observing
+only that extract can always determine the missing history. The two possible
+business histories can yield identical observed tables and different correct
+metrics. External event evidence or source attestations are therefore
+necessary for full reconciliation.
+
+## Offline replay auditor
+
+The new `python -m dbt_chaos.audit_corpus PATH` command checks every
+file hash, replays immutable business events, reconstructs every full
+source snapshot from the recorded model decision and visible row IDs,
+recomputes the independent oracle, verifies delivered vs process drift and
+checks that exported dbt gold agrees with the recorded classifications.
+
+It detects manipulated dataset bytes even when their manifest hashes
+are fraudulently updated, by comparing against the recorded event/decision
+history. This is an *internal consistency* check, not a cryptographic
+signature against an attacker who can rewrite **all** records consistently.
+
 ## Controls, implications and limitations
 
 - The positive Qwen errors are **genuine model decisions**, not fixed scripted
