@@ -22,4 +22,4 @@ dbt-chaos = "dbt_chaos.cli:main"
 include = ["dbt_chaos*"]
 
 [tool.setuptools.package-data]
-"dbt_chaos" = ["sql/*.yml", "sql/models/*.sql", "sql/models/*.yml", "sql/tests/*.sql", "commerce_sql/*.yml", "commerce_sql/models/*.sql", "commerce_sql/models/*.yml", "commerce_sql/models/quality/*.sql", "commerce_sql/tests/*.sql"]
+"dbt_chaos" = ["sql/*.yml", "sql/models/*.sql", "sql/models/*.yml", "sql/tests/*.sql", "commerce_sql/*.yml", "commerce_sql/models/*.sql", "commerce_sql/models/*.yml", "commerce_sql/models/quality/*.sql", "commerce_sql/models/reconciliation/*.sql", "commerce_sql/tests/*.sql"]
