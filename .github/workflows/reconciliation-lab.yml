@@ -1,0 +1,124 @@
+name: "Portable six-source reconciliation challenge and live dbt demo"
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/reconciliation_lab.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_reconciliation_lab.py'
+      - '.github/workflows/reconciliation-lab.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/reconciliation_lab.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_reconciliation_lab.py'
+      - '.github/workflows/reconciliation-lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reconciler-product-workflow-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-public-challenge:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e .
+      - name: Test independent oracle boundary and safe publication score
+        run: python -m unittest discover -s tests -p test_reconciliation_lab.py -v
+      - name: Reproduce the real Qwen refund change with six full input tables
+        run: |
+          dbt-chaos export-reconciliation \
+            --scenario qwen_refund_source_only \
+            --public-dir /tmp/public-reconciliation-challenge \
+            --private-dir /tmp/hidden-process-ledger
+      - name: Baseline scorer on a deliberately naive source-correct report
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import csv,json
+          key=json.loads(Path('/tmp/hidden-process-ledger/answer_key.json').read_text())
+          with Path('/tmp/naive-publication.csv').open('w',newline='') as f:
+              w=csv.writer(f)
+              w.writerow(('order_day','segment','revenue_cents'))
+              for group,cents in sorted(key['expected_from_admitted_source'].items()):
+                  w.writerow([*group.split('|',1),cents])
+          PY
+          dbt-chaos score-reconciliation \
+            --public-dir /tmp/public-reconciliation-challenge \
+            --answer-key /tmp/hidden-process-ledger/answer_key.json \
+            --published /tmp/naive-publication.csv \
+            --out /tmp/naive-scenario-result.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('/tmp/naive-scenario-result.json').read_text())
+          assert p['business_score']['status']=='silently_wrong'
+          assert p['business_score']['false_published_l1_cents']==2000
+          assert p['observable_reference_disputes']>0
+          assert not Path('/tmp/public-reconciliation-challenge/answer_key.json').exists()
+          print('Validated: correct SQL over wrong input is still wrong business output.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dbt-chaos-public-6-source-Qwen-refund-challenge
+          path: /tmp/public-reconciliation-challenge/
+          retention-days: 2
+          if-no-files-found: warn
+
+  real-dbt-evidence-demo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - name: Native provider/journal/bank reconciliation catches real model mistake
+        run: |
+          dbt-chaos reconcile-demo \
+            --scenario qwen_refund_source_only \
+            --fail-on-silent \
+            --out /tmp/reconciliation-live-result.json
+      - name: Verify business publication and independently observed test status
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path('/tmp/reconciliation-live-result.json').read_text())
+          original=x['baseline_publication']
+          guarded=x['native_published_business_score']
+          native=x['native_dbt_reconciliation']
+          assert x['real_native_dbt_executed']
+          assert original['false_published_l1_cents']==2000
+          assert original['status']=='silently_wrong'
+          assert guarded['false_published_l1_cents']==0
+          assert guarded['status']=='partially_held'
+          assert native['held_group_count']>0
+          assert native['dispute_count']>0
+          assert native['models_executed_by_dbt']
+          assert x['raw_dbt_source_alerts']==[]
+          print('Native real-dbt reconciliation verified:', native['release_status'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dbt-chaos-real-native-reconciliation-analysis
+          path: /tmp/reconciliation-live-result.json
+          retention-days: 2
+          if-no-files-found: warn
