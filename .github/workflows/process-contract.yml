@@ -7,6 +7,8 @@ on:
       - 'dbt_chaos/process_contract.py'
       - 'dbt_chaos/contract_sql.py'
       - 'contracts/**'
+      - 'dbt_chaos/contracts/**'
+      - 'pyproject.toml'
       - 'tests/test_process_contract.py'
       - 'tests/test_contract_sql.py'
       - 'dbt_chaos/cli.py'
@@ -16,6 +18,8 @@ on:
       - 'dbt_chaos/process_contract.py'
       - 'dbt_chaos/contract_sql.py'
       - 'contracts/**'
+      - 'dbt_chaos/contracts/**'
+      - 'pyproject.toml'
       - 'tests/test_process_contract.py'
       - 'tests/test_contract_sql.py'
       - 'dbt_chaos/cli.py'
@@ -93,7 +97,7 @@ jobs:
           PY
       - name: End-to-end CLI contract generation, actual SQL and independent scoring
         run: |
-          dbt-chaos contract-generate --contract contracts/procurement.json \
+          dbt-chaos contract-generate --contract procurement \
             --seed 20261119 --fault rewrite_credit \
             --public-dir /tmp/contract-public --private-dir /tmp/contract-secret
           dbt-chaos contract-reference --public-dir /tmp/contract-public \
@@ -120,6 +124,29 @@ jobs:
           assert not Path('/tmp/contract-public/answer_key.json').exists()
           assert not Path('/tmp/contract-public/process_events.jsonl').exists()
           print('Three CLI commands verified; private ledger never in public input.')
+          PY
+      - name: Build and install an actual wheel to verify bundled contracts
+        run: |
+          python -m pip wheel --disable-pip-version-check --no-deps . -w /tmp/contract-wheel
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          wheels=list(Path('/tmp/contract-wheel').glob('dbt_chaos-*.whl'))
+          assert len(wheels)==1,wheels
+          with ZipFile(wheels[0]) as archive:
+              names=set(archive.namelist())
+              for name in ('procurement','grants'):
+                  assert 'dbt_chaos/contracts/'+name+'.json' in names
+          print('Both domain contracts are packaged in the distributable wheel')
+          PY
+          python -m venv /tmp/dbt-chaos-wheel-test
+          /tmp/dbt-chaos-wheel-test/bin/pip install --disable-pip-version-check /tmp/contract-wheel/dbt_chaos-*.whl
+          cd /tmp
+          /tmp/dbt-chaos-wheel-test/bin/python - <<'PY'
+          from dbt_chaos.process_contract import load_contract
+          assert load_contract('procurement')['name']=='procurement_settlements'
+          assert load_contract('grants')['name']=='grant_disbursements'
+          print('Both built-ins load after standalone wheel installation')
           PY
       - name: Check compatibility with existing commerce contract
         run: python -m unittest discover -s tests -p test_external_challenge.py -v
