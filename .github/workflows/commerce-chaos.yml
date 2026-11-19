@@ -7,6 +7,7 @@ on:
       - 'dbt_chaos/commerce_runner.py'
       - 'dbt_chaos/commerce_sql/**'
       - 'tests/test_commerce*.py'
+      - 'examples/model2data_commerce/**'
       - '.github/workflows/commerce-chaos.yml'
       - 'pyproject.toml'
   pull_request:
@@ -27,3 +28,20 @@ jobs:
       - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
       - run: python -m unittest discover -s tests -p 'test_commerce.py' -v
       - run: python -m unittest discover -s tests -p 'test_commerce_dbt.py' -v
+      - name: model2data dataset reproduces its committed dbt results
+        run: python -m unittest discover -s tests -p 'test_commerce_model2data.py' -v
+  model2data-regenerate:
+    # Kept apart from actual-dbt: model2data brings its own dbt-core, which must not
+    # replace the version pinned in the dbt extra.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check uv==0.11.16
+      - name: Regenerate every CSV and compare byte for byte
+        run: uv run examples/model2data_commerce/generate.py --check

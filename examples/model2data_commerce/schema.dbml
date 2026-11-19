@@ -1,0 +1,49 @@
+// Three source tables shaped like the dbt-chaos commerce workload
+// (dbt_chaos/commerce_runner.py: COLUMNS and DDL). Column names and order match it.
+// Amounts are integer cents; every row is version 1 of its key.
+
+Enum segment {
+  retail
+  business
+}
+
+Enum order_status {
+  completed
+  cancelled
+}
+
+Enum currency {
+  EUR
+}
+
+Enum payment_kind {
+  capture
+  refund
+}
+
+Table customers {
+  row_id integer [unique, not null, note: '{"min": 100000, "max": 199999}']
+  customer_id integer [pk]
+  version integer [not null, note: '{"min": 1, "max": 1}']
+  segment segment [not null, note: '{"weights": {"retail": 3, "business": 1}}']
+}
+
+Table orders {
+  row_id integer [unique, not null, note: '{"min": 300000, "max": 399999}']
+  order_id integer [pk]
+  customer_id integer [not null, ref: > customers.customer_id]
+  version integer [not null, note: '{"min": 1, "max": 1}']
+  order_day date [not null]
+  gross_cents integer [not null, note: '{"min": 500, "max": 50000, "distribution": {"kind": "lognormal", "median": 4500, "spread": 0.6}}']
+  status order_status [not null, note: '{"weights": {"completed": 9, "cancelled": 1}}']
+  currency currency [not null]
+}
+
+Table payments {
+  row_id integer [unique, not null, note: '{"min": 200000, "max": 299999}']
+  payment_id integer [pk]
+  order_id integer [not null, ref: > orders.order_id]
+  version integer [not null, note: '{"min": 1, "max": 1}']
+  kind payment_kind [not null, note: '{"weights": {"capture": 3, "refund": 1}}']
+  amount_cents integer [not null, note: '{"min": 100, "max": 20000, "distribution": {"kind": "lognormal", "median": 1500, "spread": 0.7}}']
+}

@@ -1,0 +1,417 @@
+{
+  "dataset": "dbt-chaos-commerce",
+  "model2data_version": "1.20.0",
+  "seed": 20261119,
+  "as_of": "2026-10-31",
+  "rows_requested": {
+    "customers": 200,
+    "orders": 2000,
+    "payments": 4000
+  },
+  "contract": "dbt-chaos commerce workload (dbt_chaos/commerce_runner.py COLUMNS)",
+  "columns": {
+    "customers": [
+      "row_id",
+      "customer_id",
+      "version",
+      "segment"
+    ],
+    "orders": [
+      "row_id",
+      "order_id",
+      "customer_id",
+      "version",
+      "order_day",
+      "gross_cents",
+      "status",
+      "currency"
+    ],
+    "payments": [
+      "row_id",
+      "payment_id",
+      "order_id",
+      "version",
+      "kind",
+      "amount_cents"
+    ]
+  },
+  "payment_alignment": {
+    "generated": 4000,
+    "kept": 2009,
+    "dropped": {
+      "extra_payment": 1642,
+      "on_cancelled_order": 349
+    }
+  },
+  "missing_dimension_defect": {
+    "model2data": "1.20.0",
+    "seed": 20261119,
+    "preset": null,
+    "defects": [
+      {
+        "table": "orders",
+        "defect": "orphan_foreign_keys",
+        "column": "customer_id",
+        "requested": {
+          "count": 5
+        },
+        "applied": 5,
+        "rows": [
+          907,
+          1022,
+          1049,
+          1422,
+          1504
+        ],
+        "row_key": [
+          "order_id"
+        ],
+        "row_numbers": [
+          907,
+          1022,
+          1049,
+          1422,
+          1504
+        ],
+        "expected_failures": [
+          "relationships_stg_orders_customer_id__customer_id__ref_stg_customers_"
+        ]
+      }
+    ],
+    "expected_failures": [
+      {
+        "test": "relationships_stg_orders_customer_id__customer_id__ref_stg_customers_",
+        "table": "orders",
+        "column": "customer_id",
+        "type": "relationships",
+        "severity": "error",
+        "defects": [
+          "orphan_foreign_keys"
+        ]
+      }
+    ],
+    "failing_without_defects": []
+  },
+  "variants": {
+    "baseline": {
+      "files": {
+        "data/baseline/customers.csv": {
+          "rows": 200,
+          "sha256": "7d028f6a930895be84d54503cdf530474508718cf9b7e0f446c395113f3464ab"
+        },
+        "data/baseline/orders.csv": {
+          "rows": 2000,
+          "sha256": "19c477e24e4c314ec962c89b7f09c8761bc6b1efc1eca7d89dbea73b7ea45fb9"
+        },
+        "data/baseline/payments.csv": {
+          "rows": 2009,
+          "sha256": "b4e62a2ad0a66f8f4f62444df5de77b37e539224f4ef5c2b83e3084e2f4a1aac"
+        }
+      },
+      "checks": {
+        "primary_keys_unique": true,
+        "foreign_keys_resolve": true,
+        "orphan_orders": [],
+        "repeated_customer_keys": []
+      },
+      "planted": []
+    },
+    "missing_dimension/fault": {
+      "files": {
+        "data/missing_dimension/fault/customers.csv": {
+          "rows": 200,
+          "sha256": "7d028f6a930895be84d54503cdf530474508718cf9b7e0f446c395113f3464ab"
+        },
+        "data/missing_dimension/fault/orders.csv": {
+          "rows": 2000,
+          "sha256": "6c3634378c0202d506265a06fab1f8b5f9c68d20cde888e97234e78f936281a7"
+        },
+        "data/missing_dimension/fault/payments.csv": {
+          "rows": 2009,
+          "sha256": "b4e62a2ad0a66f8f4f62444df5de77b37e539224f4ef5c2b83e3084e2f4a1aac"
+        }
+      },
+      "checks": {
+        "primary_keys_unique": true,
+        "foreign_keys_resolve": false,
+        "orphan_orders": [
+          907,
+          1022,
+          1049,
+          1422,
+          1504
+        ],
+        "repeated_customer_keys": []
+      },
+      "planted": [
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 907
+          },
+          "column": "customer_id",
+          "from": 65,
+          "to": 201
+        },
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 1022
+          },
+          "column": "customer_id",
+          "from": 143,
+          "to": 202
+        },
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 1049
+          },
+          "column": "customer_id",
+          "from": 100,
+          "to": 203
+        },
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 1422
+          },
+          "column": "customer_id",
+          "from": 105,
+          "to": 204
+        },
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 1504
+          },
+          "column": "customer_id",
+          "from": 66,
+          "to": 205
+        }
+      ]
+    },
+    "missing_dimension/control": {
+      "files": {
+        "data/missing_dimension/control/customers.csv": {
+          "rows": 200,
+          "sha256": "7d028f6a930895be84d54503cdf530474508718cf9b7e0f446c395113f3464ab"
+        },
+        "data/missing_dimension/control/orders.csv": {
+          "rows": 2000,
+          "sha256": "e0cca855b7ed8e6a271500216fe16c5b8751c3885083c928016e0dabb3f6084b"
+        },
+        "data/missing_dimension/control/payments.csv": {
+          "rows": 2009,
+          "sha256": "b4e62a2ad0a66f8f4f62444df5de77b37e539224f4ef5c2b83e3084e2f4a1aac"
+        }
+      },
+      "checks": {
+        "primary_keys_unique": true,
+        "foreign_keys_resolve": true,
+        "orphan_orders": [],
+        "repeated_customer_keys": []
+      },
+      "planted": [
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 907
+          },
+          "column": "customer_id",
+          "from": 65,
+          "to": 169,
+          "segment": "retail"
+        },
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 1022
+          },
+          "column": "customer_id",
+          "from": 143,
+          "to": 139,
+          "segment": "retail"
+        },
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 1049
+          },
+          "column": "customer_id",
+          "from": 100,
+          "to": 152,
+          "segment": "retail"
+        },
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 1422
+          },
+          "column": "customer_id",
+          "from": 105,
+          "to": 177,
+          "segment": "business"
+        },
+        {
+          "table": "orders",
+          "key": {
+            "order_id": 1504
+          },
+          "column": "customer_id",
+          "from": 66,
+          "to": 140,
+          "segment": "business"
+        }
+      ]
+    },
+    "duplicate_join_key/fault": {
+      "files": {
+        "data/duplicate_join_key/fault/customers.csv": {
+          "rows": 203,
+          "sha256": "d280bcaa390f39f54b0e7e0ef2ecb76b057224ad03adb7f14c1c0e12d70ee176"
+        },
+        "data/duplicate_join_key/fault/orders.csv": {
+          "rows": 2000,
+          "sha256": "19c477e24e4c314ec962c89b7f09c8761bc6b1efc1eca7d89dbea73b7ea45fb9"
+        },
+        "data/duplicate_join_key/fault/payments.csv": {
+          "rows": 2009,
+          "sha256": "b4e62a2ad0a66f8f4f62444df5de77b37e539224f4ef5c2b83e3084e2f4a1aac"
+        }
+      },
+      "checks": {
+        "primary_keys_unique": false,
+        "foreign_keys_resolve": true,
+        "orphan_orders": [],
+        "repeated_customer_keys": [
+          59,
+          124,
+          157
+        ]
+      },
+      "planted": [
+        {
+          "table": "customers",
+          "change": "row_added",
+          "key": {
+            "customer_id": 59,
+            "version": 1
+          },
+          "row": {
+            "row_id": 199427,
+            "customer_id": 59,
+            "version": 1,
+            "segment": "business"
+          },
+          "copy_of_row_id": 112748,
+          "orders_of_customer": 8
+        },
+        {
+          "table": "customers",
+          "change": "row_added",
+          "key": {
+            "customer_id": 124,
+            "version": 1
+          },
+          "row": {
+            "row_id": 199428,
+            "customer_id": 124,
+            "version": 1,
+            "segment": "retail"
+          },
+          "copy_of_row_id": 150514,
+          "orders_of_customer": 6
+        },
+        {
+          "table": "customers",
+          "change": "row_added",
+          "key": {
+            "customer_id": 157,
+            "version": 1
+          },
+          "row": {
+            "row_id": 199429,
+            "customer_id": 157,
+            "version": 1,
+            "segment": "business"
+          },
+          "copy_of_row_id": 186675,
+          "orders_of_customer": 5
+        }
+      ]
+    },
+    "duplicate_join_key/control": {
+      "files": {
+        "data/duplicate_join_key/control/customers.csv": {
+          "rows": 203,
+          "sha256": "7f06286610be65b5232b5c29f2b93912f15df88b4120175adda76e6976c1415d"
+        },
+        "data/duplicate_join_key/control/orders.csv": {
+          "rows": 2000,
+          "sha256": "19c477e24e4c314ec962c89b7f09c8761bc6b1efc1eca7d89dbea73b7ea45fb9"
+        },
+        "data/duplicate_join_key/control/payments.csv": {
+          "rows": 2009,
+          "sha256": "b4e62a2ad0a66f8f4f62444df5de77b37e539224f4ef5c2b83e3084e2f4a1aac"
+        }
+      },
+      "checks": {
+        "primary_keys_unique": true,
+        "foreign_keys_resolve": true,
+        "orphan_orders": [],
+        "repeated_customer_keys": []
+      },
+      "planted": [
+        {
+          "table": "customers",
+          "change": "row_added",
+          "key": {
+            "customer_id": 59,
+            "version": 2
+          },
+          "row": {
+            "row_id": 199427,
+            "customer_id": 59,
+            "version": 2,
+            "segment": "business"
+          },
+          "copy_of_row_id": 112748,
+          "orders_of_customer": 8
+        },
+        {
+          "table": "customers",
+          "change": "row_added",
+          "key": {
+            "customer_id": 124,
+            "version": 2
+          },
+          "row": {
+            "row_id": 199428,
+            "customer_id": 124,
+            "version": 2,
+            "segment": "retail"
+          },
+          "copy_of_row_id": 150514,
+          "orders_of_customer": 6
+        },
+        {
+          "table": "customers",
+          "change": "row_added",
+          "key": {
+            "customer_id": 157,
+            "version": 2
+          },
+          "row": {
+            "row_id": 199429,
+            "customer_id": 157,
+            "version": 2,
+            "segment": "business"
+          },
+          "copy_of_row_id": 186675,
+          "orders_of_customer": 5
+        }
+      ]
+    }
+  }
+}
