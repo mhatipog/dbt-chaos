@@ -52,6 +52,42 @@ def absolute_group_error(expected: dict, observed: dict) -> int:
                for k in expected.keys() | observed.keys())
 
 
+def enhanced_source_alerts(data: dict[str, list[dict]]) -> list[str]:
+    """Additional observable integrity detectors; NO access to event-ledger truth.
+
+    These are candidate quality checks, not dbt tests already installed.
+    Unlike a business-ledger reconciliation they cannot discover valid-looking
+    edits that misrepresent what *actually* happened.
+    """
+    customers = {r["customer_id"] for r in data["customers"]}
+    latest_orders: dict[int, dict] = {}
+    for row in data["orders"]:
+        key = row["order_id"]
+        old = latest_orders.get(key)
+        if old is None or (row["version"], row["row_id"]) > (old["version"], old["row_id"]):
+            latest_orders[key] = row
+    alerts = set()
+    if any(order["customer_id"] not in customers for order in latest_orders.values()):
+        alerts.add("orders_missing_customer")
+    if any(payment["order_id"] not in latest_orders for payment in data["payments"]):
+        alerts.add("payments_missing_order")
+    amounts: dict[int, dict[str, int]] = {}
+    for row in data["payments"]:
+        kind, value = row["kind"], row["amount_cents"]
+        if kind in ("capture", "refund") and type(value) is int and value >= 0:
+            amounts.setdefault(row["order_id"], {"capture": 0, "refund": 0})[kind] += value
+    for order_id, values in amounts.items():
+        if values["refund"] > values["capture"]:
+            alerts.add("refund_exceeds_capture")
+        order = latest_orders.get(order_id)
+        if order and type(order["gross_cents"]) is int:
+            if values["capture"] > order["gross_cents"]:
+                alerts.add("capture_exceeds_order_gross")
+            if order["status"] == "cancelled" and values["capture"] > values["refund"]:
+                alerts.add("uncleared_cancelled_capture")
+    return sorted(alerts)
+
+
 def parse_profile(raw: str, *, seed: int) -> tuple[Profile, bool]:
     """A model-generated scenario is accepted only if every field passes checks."""
     try:
@@ -447,6 +483,7 @@ def build_corpus(*, planner: Any, seed: int = 20261119, steps: int = 5,
             "raw_model_output": raw[:2000], "proposal": proposal,
             "model_output_valid": parsed, "edit_effect": effect,
             "logic_fault": logic_fault, "source_contract_alerts": alerts,
+            "enhanced_source_alerts": enhanced_source_alerts(admitted),
             "input_gold": admitted_gold, "source_drift_cents": signed_input_drift,
             "source_absolute_error_cents": absolute_group_error(ledger_gold, admitted_gold),
             "input_vs_process": difference(ledger_gold, admitted_gold),
@@ -608,6 +645,8 @@ def main() -> None:
         "source_drift_cents": [step["source_drift_cents"] for step in corpus["steps"]],
         "source_absolute_error_cents": [
             step["source_absolute_error_cents"] for step in corpus["steps"]],
+        "enhanced_source_alerts": [
+            step["enhanced_source_alerts"] for step in corpus["steps"]],
         "business_drift_cents": [step.get("business_drift_cents") for step in corpus["steps"]],
         "business_absolute_error_cents": [
             step.get("business_absolute_error_cents") for step in corpus["steps"]],
