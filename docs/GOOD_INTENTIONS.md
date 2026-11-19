@@ -71,7 +71,7 @@ Qwen2.5-Coder-0.5B-Instruct Q4_K_M GGUF, then:
 
 ```bash
 python -m dbt_chaos.handoff --agent llama --steps 4 --execute-dbt \
-  --model /path/to/qwen2.5-0.5b-coder-instruct-q4_k_m.gguf \
+  --model /path/to/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf \
   --output /tmp/handoff-model.json
 ```
 
