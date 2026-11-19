@@ -163,7 +163,9 @@ class EvidenceGateUnitTests(unittest.TestCase):
             {"operation": "drop_row", "table": "payments", "row_id": extra_id},
             state=state, tier="attested", truth=self.truth)
         self.assertEqual("accepted", proven["decision"])
-        self.assertEqual("exact_event_attestation", proven["reason"])
+        self.assertEqual("exact_duplicate_cleanup", proven["reason"])
+        # A byte-identical retry is safely removable on source evidence
+        # alone; no external process attestation should be necessary.
         self.assertEqual(self.truth, state)
 
 
