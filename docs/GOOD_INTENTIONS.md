@@ -81,6 +81,42 @@ The model arm is *not guaranteed to make a mistake*. It records actual actions,
 parsing failures and outcomes. It does not use a paid inference API, persistent
 artifacts, a runner cache, credentials, or external production datasets.
 
+## Quantitative error attribution and counterfactual context control
+
+For every output group `g`, the error is decomposed exactly as:
+
+```text
+dbt_output[g] - process_truth[g]
+    = (dbt_output[g] - oracle(admitted_source)[g])
+    + (oracle(admitted_source)[g] - process_truth[g])
+        transformation drift                source-delivery drift
+```
+
+The runner retains group-wise mismatches and signed aggregate cents across
+these three views. **A clean result relative to admitted data does not prove
+business correctness.** If the two error components cancel out, the state is
+marked `masked_errors`, rather than falsely called genuinely correct.
+
+The local LLM workflow now runs two paired arms, using the same weights,
+same seed and same task sequence (but separate model sessions):
+
+- `--context-mode handoff`: only the previous agent's summary.
+- `--context-mode full_history`: previous summaries, actions and tasks.
+
+The default is the lossy `handoff` condition. `--context-mode no_notes`
+is also available for a later negative control. The agent's current
+observable table metadata remains identical across modes, and none can
+see the independent ledger or correctness results.
+
+**Initial observed pilot (2026-11-19):** [GitHub Actions run 44532494665](https://github.com/mhatipog/dbt-chaos/actions/runs/44532494665)
+used real CPU-only Qwen2.5-Coder-0.5B and real dbt. Its four actions
+were `simplify_customer_lookup`, then three consecutive
+`record_customer_version` operations; silent output corruption appeared
+at step two. The model made irrelevant choices on later tasks, so this
+single run illustrates weak-agent misinterpretation, **not proven
+telephone-specific degradation**. A full-history matched control is
+required to test that claim.
+
 ## What this does NOT establish
 
 - The PoC's operations are predefined; the model chooses them using natural
