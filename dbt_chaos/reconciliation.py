@@ -184,8 +184,10 @@ def make_scenarios(seed: int = 20261119) -> dict[str, Any]:
            "Legitimate clean transaction before external feeds arrive")
     insert("clean_after_provider_before_bank", truth, evidence, 2,
            "Legitimate on-time provider evidence; bank batches pending")
-    insert("qwen_before_provider", op, evidence, 0,
-           "Qwen source edit while independent provider/bank feeds pending")
+    insert("qwen_before_provider", op, correlated, 0,
+           "Qwen source edit with same wrong internal journal copy; external feeds pending")
+    insert("qwen_internal_gl_detects_early", op, evidence, 0,
+           "Qwen source edit while intact internal GL already reveals a disagreement")
     missing = deepcopy(evidence)
     missing["provider_transactions"] = [
         r for r in missing["provider_transactions"] if r["payment_id"] != 288]
@@ -197,10 +199,8 @@ def make_scenarios(seed: int = 20261119) -> dict[str, Any]:
     provider["amount_cents"] = 2900
     insert("psp_and_gl_corrupted_bank_catches", op, wrong_psp, 5,
            "Scripted PSP plus internal journal error; independent bank remains correct")
-    bank_derived_psp = deepcopy(wrong_psp)
-    for row in bank_derived_psp["bank_batches"]:
-        row["origin_root"] = "independent_psp"  # invalid: cannot masquerade as bank
-    # We do NOT insert a forged independent bank case as valid evidence.
+    # Bank feeds cannot masquerade as a distinct independence root if they
+    # are really derived from the PSP: validation will reject such metadata.
     return {"seed": seed, "events": events, "truth": truth,
             "cases": cases, "original_provider": evidence}
 
