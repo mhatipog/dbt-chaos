@@ -1,0 +1,145 @@
+name: Full LLM-generated commerce datasets (research)
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/full_datasets.py'
+      - 'dbt_chaos/commerce.py'
+      - 'dbt_chaos/commerce_runner.py'
+      - 'tests/test_full_datasets.py'
+      - '.github/workflows/full-datasets.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/full_datasets.py'
+      - 'dbt_chaos/commerce.py'
+      - 'dbt_chaos/commerce_runner.py'
+      - 'tests/test_full_datasets.py'
+      - '.github/workflows/full-datasets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-datasets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  process-ledger-and-controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - run: python -m unittest discover -s tests -p 'test_full_datasets.py' -v
+      - run: python -m unittest discover -s tests -p 'test_handoff.py' -v
+      - name: Generate complete controlled source tables and run real dbt
+        run: |
+          python -m dbt_chaos.full_datasets --agent scripted --steps 3 --execute-dbt \
+            --output-dir /tmp/full-datasets/calibration
+      - name: Check exported CSV integrity and process-vs-output mismatch
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from hashlib import sha256
+          root=Path('/tmp/full-datasets/calibration')
+          manifest=json.loads((root/'manifest.json').read_text())
+          trace=json.loads((root/'trace.json').read_text())
+          assert manifest['full_dataset_snapshots']==3, manifest
+          assert manifest['initial_rows']['orders']>=480
+          assert manifest['initial_rows']['payments']>200
+          assert all(sha256((root/rel).read_bytes()).hexdigest()==spec['sha256']
+                     for rel,spec in manifest['files'].items())
+          assert len(trace['steps'])==3
+          assert all(s['evidence_level']=='executed_dbt_duckdb' for s in trace['steps'])
+          assert trace['steps'][0]['dbt_classification']=='silent_corruption',trace['steps'][0]
+          assert trace['steps'][1]['input_vs_process'],trace['steps'][1]
+          print('Reproducible FULL dataset snapshots and independent truth: PASS')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-datasets-calibration
+          path: /tmp/full-datasets/calibration
+          retention-days: 1
+          if-no-files-found: warn
+
+  weak-llm-datasets:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/research/good-intentions-handoff-20261119'
+    needs: process-ledger-and-controls
+    runs-on: ubuntu-24.04
+    timeout-minutes: 27
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e '.[dbt]' 'llama-cpp-python>=0.3,<0.4' 'huggingface_hub>=0.26,<2'
+      - name: Download two free small quantized models into ephemeral /tmp
+        run: |
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          choices=[
+            ('Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF',
+             'qwen2.5-coder-0.5b-instruct-q4_k_m.gguf'),
+            ('bartowski/SmolLM2-360M-Instruct-GGUF',
+             'SmolLM2-360M-Instruct-Q4_K_M.gguf'),
+          ]
+          for repo,filename in choices:
+            model=hf_hub_download(repo_id=repo,filename=filename,local_dir='/tmp/models')
+            print('Downloaded local model:',model)
+          PY
+      - name: Weak Qwen model generates scenario and full source snapshots
+        run: |
+          python -m dbt_chaos.full_datasets --agent llama --steps 6 --execute-dbt \
+            --context-mode handoff --seed 20261119 \
+            --model /tmp/models/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf \
+            --output-dir /tmp/full-datasets/qwen-handoff
+      - name: Weak SmolLM model independently generates scenario and full source snapshots
+        run: |
+          python -m dbt_chaos.full_datasets --agent llama --steps 6 --execute-dbt \
+            --context-mode handoff --seed 20261119 \
+            --model /tmp/models/SmolLM2-360M-Instruct-Q4_K_M.gguf \
+            --output-dir /tmp/full-datasets/smollm-handoff
+      - name: Validate both dataset archives and report grounded outcomes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from hashlib import sha256
+          import json
+          for model in ('qwen-handoff','smollm-handoff'):
+            root=Path('/tmp/full-datasets')/model
+            manifest=json.loads((root/'manifest.json').read_text())
+            trace=json.loads((root/'trace.json').read_text())
+            assert len(trace['steps'])==6
+            assert manifest['full_dataset_snapshots']==6
+            assert all(s['evidence_level']=='executed_dbt_duckdb' for s in trace['steps'])
+            assert all(sha256((root/file).read_bytes()).hexdigest()==spec['sha256']
+                       for file,spec in manifest['files'].items())
+            print(model,'rows=',manifest['initial_rows'],
+                  'events=',manifest['event_count'],
+                  'profile_accepted=',trace['profile_accepted'])
+            print('  model actions=',[s['proposal']['operation'] for s in trace['steps']])
+            print('  application effects=',[s['edit_effect'] for s in trace['steps']])
+            print('  source drift=',[s['source_drift_cents'] for s in trace['steps']])
+            print('  measured business drift=',[s['business_drift_cents'] for s in trace['steps']])
+            print('  accepted JSON=',[s['model_output_valid'] for s in trace['steps']])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: full-datasets-two-weak-models
+          path: |
+            /tmp/full-datasets/qwen-handoff/
+            /tmp/full-datasets/smollm-handoff/
+          retention-days: 1
+          if-no-files-found: warn
