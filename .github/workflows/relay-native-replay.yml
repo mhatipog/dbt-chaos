@@ -1,12 +1,9 @@
 name: Real native dbt protection of frozen 20-step weak-LLM outcomes
 
 on:
-  push:
-    branches: [research/good-intentions-handoff-20261119]
-    paths:
-      - 'dbt_chaos/relay_platform_replay.py'
-      - 'tests/test_relay_platform_replay.py'
-      - '.github/workflows/relay-native-replay.yml'
+  # Source model artifacts are retained briefly; this replay must be
+  # dispatched against a specific *existing* completed run ID instead of
+  # automatically failing on pushes after the source artifacts expire.
   workflow_dispatch:
     inputs:
       source_run_id:
