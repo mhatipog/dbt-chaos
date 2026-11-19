@@ -92,8 +92,9 @@ dbt-chaos contract-score \
 The same engine also executes `contracts/grants.json` with different
 table names, movement kinds and business statuses. Five fault scenarios
 per domain are validated using the **event-ledger oracle, delivered-source
-oracle and actual SQL execution**, with no answer-key leakage
-([CI results](https://github.com/mhatipog/dbt-chaos/actions/workflows/process-contract.yml)).
+oracle and actual SQL execution**, with no answer-key leakage.
+[Exact measured findings](docs/PROCESS_CONTRACT_RESULTS_20261119.md) ·
+[Verified 26-test / 10-case CI run](https://github.com/mhatipog/dbt-chaos/actions/runs/44615377506).
 
 **Important:** These new domain faults are scripted *human-like
 calibration*, **not fresh LLM-generated errors**. The process-contract DSL
