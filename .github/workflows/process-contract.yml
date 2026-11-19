@@ -1,0 +1,128 @@
+name: Declarative process contracts — two domains, independent oracles
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/process_contract.py'
+      - 'contracts/**'
+      - 'tests/test_process_contract.py'
+      - 'dbt_chaos/cli.py'
+      - '.github/workflows/process-contract.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/process_contract.py'
+      - 'contracts/**'
+      - 'tests/test_process_contract.py'
+      - 'dbt_chaos/cli.py'
+      - '.github/workflows/process-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dbt-chaos-process-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  two-domain-contract-benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install no-model, no-dbt contract engine
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Validate independent ledger, source oracle and actual SQL execution
+        run: |
+          python -m compileall -q dbt_chaos
+          python -m unittest discover -s tests -p test_process_contract.py -v
+      - name: All ten contract/fault combinations with public-input-only SQL
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          from dbt_chaos.process_contract import (
+              FAULTS, export_contract_challenge, run_reference_from_public,
+              score_contract_challenge)
+          root=Path('/tmp/process-contract-bench')
+          results=[]
+          for contract in ('procurement','grants'):
+              for fault in FAULTS:
+                  path=root/contract/fault
+                  pub=path/'public'; pri=path/'private'; sql=path/'published'
+                  case=export_contract_challenge(
+                      contract_path=Path('contracts')/(contract+'.json'),
+                      seed=20261119,fault=fault,
+                      public_dir=pub,private_dir=pri)
+                  run_reference_from_public(pub,sql)
+                  score=score_contract_challenge(
+                      public_dir=pub,answer_key=pri/'answer_key.json',
+                      published_dir=sql)
+                  s=score['results']
+                  assert s['clean']['verdict']=='business_correct'
+                  expected=('business_correct' if fault in ('none','duplicate_delivery')
+                            else 'garbage_passed_through')
+                  assert s['chaos']['verdict']==expected,(contract,fault,score)
+                  assert s['chaos']['published_vs_delivered_source_l1_cents']==0
+                  assert case['oracle_separated'] and not case['model_generated_fault']
+                  results.append({
+                      'contract':contract,'fault':fault,
+                      'chaos':s['chaos']['verdict'],
+                      'business_l1_cents':s['chaos']['source_to_business_l1_cents'],
+                      'wrong_published_groups':len(s['chaos']['published']['false_published_groups']),
+                      'source_rows':case['input_rows']['chaos'],
+                      'process_events':case['process_event_count'],
+                  })
+                  print(contract,fault,s['chaos']['verdict'])
+          assert len(results)==10
+          root.mkdir(parents=True,exist_ok=True)
+          (root/'results.json').write_text(json.dumps(results,indent=2))
+          print('VERIFIED 10 independent real SQLite cases;'
+                ' two unrelated domain schemas; zero oracle leakage')
+          PY
+      - name: End-to-end CLI contract generation, actual SQL and independent scoring
+        run: |
+          dbt-chaos contract-generate --contract contracts/procurement.json \
+            --seed 20261119 --fault rewrite_credit \
+            --public-dir /tmp/contract-public --private-dir /tmp/contract-secret
+          dbt-chaos contract-reference --public-dir /tmp/contract-public \
+            --output-dir /tmp/contract-sql
+          dbt-chaos contract-score --public-dir /tmp/contract-public \
+            --answer-key /tmp/contract-secret/answer_key.json \
+            --published-dir /tmp/contract-sql \
+            --out /tmp/contract-score.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result=json.loads(Path('/tmp/contract-score.json').read_text())
+          assert result['results']['clean']['verdict']=='business_correct'
+          assert result['results']['chaos']['verdict']=='garbage_passed_through'
+          assert result['results']['chaos']['source_to_business_l1_cents']==2000
+          assert not Path('/tmp/contract-public/answer_key.json').exists()
+          assert not Path('/tmp/contract-public/process_events.jsonl').exists()
+          print('Three CLI commands verified; private ledger never in public input.')
+          PY
+      - name: Check compatibility with existing commerce contract
+        run: python -m unittest discover -s tests -p test_external_challenge.py -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: declarative-procurement-public-chaos-challenge
+          path: /tmp/contract-public/
+          retention-days: 2
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: contract-cross-domain-results
+          path: |
+            /tmp/process-contract-bench/results.json
+            /tmp/contract-score.json
+          retention-days: 2
+          if-no-files-found: warn
