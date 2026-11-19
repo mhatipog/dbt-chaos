@@ -109,6 +109,9 @@ def main(argv=None):
     cref=cmd.add_parser("contract-reference",help="Run independently executed SQLite reference on public synthetic inputs (no private truth)")
     cref.add_argument("--public-dir",type=Path,required=True)
     cref.add_argument("--output-dir",type=Path,required=True)
+    cprobe=cmd.add_parser("contract-probe",help="Run optional source-only SQL DQ checks from a contract")
+    cprobe.add_argument("--public-dir",type=Path,required=True)
+    cprobe.add_argument("--out",type=Path,required=True)
     cs=cmd.add_parser("contract-score",help="Grade platform-published results against private event-ledger truth")
     cs.add_argument("--public-dir",type=Path,required=True)
     cs.add_argument("--answer-key",type=Path,required=True)
@@ -118,10 +121,19 @@ def main(argv=None):
     cs.add_argument("--out",type=Path,required=True)
     cs.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
-    if args.command in ("contract-generate","contract-reference","contract-score"):
+    if args.command in ("contract-generate","contract-reference","contract-score","contract-probe"):
         from .process_contract import (
             export_contract_challenge,run_reference_from_public,
             score_contract_challenge)
+        if args.command=="contract-probe":
+            from .contract_sql import evaluate_public_quality
+            result=evaluate_public_quality(args.public_dir)
+            args.out.parent.mkdir(parents=True,exist_ok=True)
+            args.out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf8")
+            print(json.dumps({scenario:{"block":results["block_count"],
+                "info":results["informational_count"]}
+                for scenario,results in result["results"].items()},indent=2))
+            return 0
         if args.command=="contract-generate":
             result=export_contract_challenge(
                 contract_path=args.contract,seed=args.seed,fault=args.fault,
