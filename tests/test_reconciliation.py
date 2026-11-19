@@ -82,6 +82,23 @@ class ReconciliationTests(unittest.TestCase):
         scored = score_against_process(s["source"], r, self.truth)
         self.assertEqual(0, scored["false_published_l1_cents"])
 
+    def test_all_claimed_sources_agree_yet_original_business_truth_is_wrong(self):
+        item=self.b["cases"]["all_claimed_feeds_agree_on_wrong_value"]
+        rec=reconcile(item["source"], item["evidence"], as_of_lag_days=5)
+        self.assertEqual("verified", rec["status"])
+        self.assertEqual([], rec["findings"])
+        self.assertEqual([], rec["held_groups"])
+        self.assertEqual(2, rec["independent_external_root_count"])
+        outcome=score_against_process(item["source"], rec, self.truth)
+        self.assertEqual(2000, outcome["source_error_l1_cents"])
+        self.assertEqual(2000, outcome["false_published_l1_cents"])
+        self.assertEqual("unobservable_with_provided_evidence",
+                         outcome["detectability"])
+        self.assertFalse(outcome["platform_should_be_penalized_for_missing_detection"])
+        # Root labels are asserted strings, NOT cryptographic guarantees.
+        self.assertEqual("independent_bank",
+                         item["evidence"]["bank_batches"][0]["origin_root"])
+
     def test_no_false_alarm_before_provider_or_bank_arrive(self):
         for name in ("clean_before_settlement",
                      "clean_after_provider_before_bank"):
@@ -158,7 +175,7 @@ class ReconciliationTests(unittest.TestCase):
         report = evaluate_scenarios()
         self.assertEqual("multisource_reconciliation_reference_v1",
                          report["experiment"])
-        self.assertEqual(9, len(report["cases"]))
+        self.assertEqual(10, len(report["cases"]))
         by_name = {r["scenario"]: r for r in report["cases"]}
         self.assertEqual("verified", by_name["clean_mature"]
                          ["reconciliation"]["status"])
