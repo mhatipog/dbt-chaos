@@ -12,7 +12,7 @@ import unittest
 from dbt_chaos.commerce import oracle, source_contract_alerts
 from dbt_chaos.full_datasets import (
     Profile, ScriptedDatasetPlanner, absolute_group_error, apply_proposal, build_corpus, clean_dataset,
-    export_corpus, generate_events, parse_profile, parse_proposal,
+    enhanced_source_alerts, export_corpus, generate_events, parse_profile, parse_proposal,
     replay_events, ticket_for, validate_new_value,
 )
 
@@ -95,6 +95,7 @@ class FullDatasetTests(unittest.TestCase):
         self.assertGreater(absolute_group_error(before, after), 0)
         self.assertEqual(0, absolute_group_error(before, before))
         self.assertEqual([], source_contract_alerts(modified))
+        self.assertEqual([], enhanced_source_alerts(modified))
 
     def test_model_profile_without_history_is_rejected_with_reason(self):
         class MissingHistory(StubLLM):
@@ -111,6 +112,41 @@ class FullDatasetTests(unittest.TestCase):
         self.assertEqual(64, corpus["profile"].customers)
         self.assertTrue(corpus["raw_profile_proposal"])
         self.assertEqual([], source_contract_alerts(corpus["truth"]))
+
+    def test_relational_detector_has_independent_scope(self):
+        _, truth = clean_dataset(Profile())
+        self.assertEqual([], enhanced_source_alerts(truth))
+
+        orphan = deepcopy(truth)
+        target_order_id = next(p["order_id"] for p in orphan["payments"])
+        orphan["orders"] = [o for o in orphan["orders"]
+                            if o["order_id"] != target_order_id]
+        self.assertIn("payments_missing_order", enhanced_source_alerts(orphan))
+        # The original tests are deliberately incomplete; the enhanced
+        # check measures the value of adding a payment->order relationship.
+        self.assertEqual([], source_contract_alerts(orphan))
+
+        changed_refund = deepcopy(truth)
+        captures = {}
+        for row in changed_refund["payments"]:
+            if row["kind"] == "capture":
+                captures[row["order_id"]] = (
+                    captures.get(row["order_id"], 0) + row["amount_cents"])
+        refund = next(row for row in changed_refund["payments"]
+                      if row["kind"] == "refund"
+                      and row["amount_cents"] < captures[row["order_id"]])
+        refund["amount_cents"] = captures[refund["order_id"]]
+        self.assertNotEqual(oracle(truth), oracle(changed_refund))
+        self.assertEqual([], enhanced_source_alerts(changed_refund))
+        self.assertEqual([], source_contract_alerts(changed_refund))
+
+        excess = deepcopy(truth)
+        capture = next(p for p in excess["payments"] if p["kind"] == "capture")
+        oid = capture["order_id"]
+        current_order = max((o for o in excess["orders"] if o["order_id"] == oid),
+                            key=lambda o: (o["version"], o["row_id"]))
+        capture["amount_cents"] = current_order["gross_cents"] + 5000000
+        self.assertIn("capture_exceeds_order_gross", enhanced_source_alerts(excess))
 
     def test_profile_validation_and_fallback(self):
         raw = json.dumps({"customers": 24, "orders": 120,
