@@ -56,6 +56,10 @@ previously been reported by dbt-saboteur and deadcanary.
 9. Preserve machine-readable JSON, a hash manifest, and upstream SHA
    as CI artifacts. Row values and exact row identifiers are redacted
    from the published assessment by default.
+10. Evaluate both **net numeric error** and **gross absolute error grouped
+    by payment ID**, without disclosing any payment identifiers. In a
+    different project, two offsetting accounting errors can yield zero
+    net error while corrupting multiple groups.
 
 ## Result definitions
 
