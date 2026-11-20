@@ -25,6 +25,7 @@ from copy import deepcopy
 from hashlib import sha256
 import json
 from pathlib import Path
+import secrets
 from typing import Any, Protocol
 
 from .contract_agent import (
@@ -37,6 +38,7 @@ from .process_contract import (
     run_sqlite_reference, simulate_process, validate_contract,
 )
 from .relay_platform_replay import score_publication
+from .contract_receipt import issue_simulated_receipt, verify_scoped_correction
 
 
 class Reviewer(Protocol):
@@ -261,6 +263,47 @@ def review_case(contract: dict, events: list[dict], case: dict,
                 run_quality_checks_on_sources(contract, submitted)
                 if i["severity"] == "block"],
         }
+    # A narrower third evidence tier: only the exact, independently signed
+    # provider receipt is used to approve a financially necessary change.
+    # A separate synthetic issuer derives that receipt from the immutable
+    # process events; the verifier is given NO event ledger or full truth.
+    if apply_selected:
+        receipt_decision = gate_results["source_only"]["gate_decision"]
+        if (receipt_decision["decision"] != "accepted"
+                and case["id"] == "attested_credit_recovery"
+                and case["ticket"].get("independent_evidence_attached")
+                and case["ticket"].get("external_receipt", {}).get("verified")):
+            source = project_source(contract, events)
+            table = case["candidate"]["table"]
+            original = next(
+                row for row in source[table]
+                if row["row_id"] == case["candidate"]["row_id"])
+            verifier_key = secrets.token_bytes(32)
+            authentic_receipt = issue_simulated_receipt(
+                contract, original, verifier_key)
+            receipt_decision = verify_scoped_correction(
+                contract, case["initial"], candidate, case["candidate"],
+                authentic_receipt, verifier_key)
+    else:
+        receipt_decision = {
+            "decision": "not_invoked",
+            "reason": "model_did_not_apply",
+            "applied": False,
+        }
+    accepted_receipt = receipt_decision["decision"] == "accepted"
+    receipt_state = candidate if accepted_receipt else original
+    gate_results["provider_receipt"] = {
+        "gate_decision": receipt_decision,
+        "actual_business_publication": _error_score(
+            contract, events, receipt_state),
+        "issued_source_quality_alerts": [
+            finding["check_name"] for finding in
+            run_quality_checks_on_sources(contract, receipt_state)
+            if finding["severity"] == "block"],
+        "full_process_ledger_given_to_gate": False,
+        "model_authored_receipt": False,
+        "production_provider_connected": False,
+    }
     appropriate = (
         (review["decision"] == "apply" and intended in
          ("beneficial_repair", "beneficial_idempotent")) or
@@ -379,7 +422,7 @@ def summarize(report: dict) -> dict:
                 sum(r[name]["fraction_of_correct_business_value_published"]
                     for r in rows)/len(rows),6),
         }
-    for tier in ("source_only","attested"):
+    for tier in ("source_only","attested","provider_receipt"):
         scores["selected_"+tier+"_gate"]={
             "wrong_case_count":sum(_absolute(
                 r["selected_gate_results"][tier]
