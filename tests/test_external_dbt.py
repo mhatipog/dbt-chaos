@@ -9,7 +9,7 @@ import unittest
 
 from dbt_chaos.external_dbt import (
     ExternalProjectError, _compare, _inventory, _read_csv, _trusted_expected,
-    build_mutation, run_external_campaign, write_external_report,
+    build_mutation, inspect_external_project, run_external_campaign, write_external_report,
 )
 
 PROJECT = Path("tests/fixtures/foreign_dbt_project")
@@ -76,6 +76,22 @@ class ExternalProjectUnitTests(unittest.TestCase):
                 match_value="2", delta=2000, faults=("amount_shift",),
                 independent_expected=TRUTH,
                 acknowledge_code_execution=False)
+
+    @unittest.skipUnless(importlib.util.find_spec("yaml") is not None,
+                         "requires optional dbt/PyYAML dependencies")
+    def test_side_effect_free_project_inspection_exposes_schema_not_row_data(self):
+        report = inspect_external_project(PROJECT)
+        self.assertEqual("foreign_retail", report["project"])
+        self.assertFalse(report["dbt_or_macro_code_executed"])
+        self.assertTrue(report["schema_only_no_row_values_exposed"])
+        self.assertIn("gold_revenue", report["model_file_names_not_compiled_dag"])
+        self.assertEqual(1, len(report["seeds"]))
+        seed = report["seeds"][0]
+        self.assertEqual(["payment_id"], seed["candidate_row_keys"])
+        self.assertEqual(["amount_cents"], seed["candidate_integer_amount_columns"])
+        self.assertTrue(seed["supported_for_bounded_mutation"])
+        self.assertNotIn("4900", json.dumps(report))
+        self.assertNotIn("2500", json.dumps(report))
 
     def test_injection_and_ambiguous_rows_fail_closed(self):
         for match_value in ("nonexistent", ""):
