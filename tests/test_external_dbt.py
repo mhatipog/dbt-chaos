@@ -62,6 +62,8 @@ class ExternalProjectUnitTests(unittest.TestCase):
         self.assertEqual(1, report["removed_rows"])
         self.assertEqual(1, report["added_rows"])
 
+    @unittest.skipUnless(importlib.util.find_spec("yaml") is not None,
+                         "requires optional dbt/PyYAML dependencies")
     def test_input_validation_requires_no_ambient_code_execution(self):
         info = _inventory(PROJECT)
         self.assertEqual("foreign_retail", info["name"])
@@ -92,6 +94,8 @@ class ExternalProjectUnitTests(unittest.TestCase):
                 SOURCE, "freeform_sql", column="amount_cents",
                 match_column="payment_id", match_value="2", delta=2000)
 
+    @unittest.skipUnless(importlib.util.find_spec("yaml") is not None,
+                         "requires optional dbt/PyYAML dependencies")
     def test_symlinks_and_package_manifests_are_rejected(self):
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
