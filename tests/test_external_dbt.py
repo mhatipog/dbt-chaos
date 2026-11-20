@@ -126,6 +126,23 @@ class ExternalProjectUnitTests(unittest.TestCase):
             with self.assertRaisesRegex(ExternalProjectError, "symlink"):
                 _inventory(root)
 
+    @unittest.skipUnless(importlib.util.find_spec("yaml") is not None,
+                         "requires optional dbt/PyYAML dependencies")
+    def test_dirty_baseline_cannot_be_graded_as_caused_by_chaos(self):
+        mock_baseline = {
+            "execution": "completed",
+            "test_verdict": "test_detected",
+            "snapshot": {"columns": ["x"], "rows": [("1",)]},
+        }
+        with patch("dbt_chaos.external_dbt._trial", return_value=mock_baseline) as run:
+            with self.assertRaisesRegex(ExternalProjectError, "clean dbt tests"):
+                run_external_campaign(
+                    project_dir=PROJECT, model="gold_revenue", seed_table="payments",
+                    column="amount_cents", match_column="payment_id",
+                    match_value="2", delta=2000, faults=("amount_shift",),
+                    independent_expected=None, acknowledge_code_execution=True)
+            self.assertEqual(1, run.call_count)
+
     def test_results_refuse_overwrite(self):
         report = {"format": "test", "cases": []}
         with TemporaryDirectory() as tmp:
