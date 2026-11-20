@@ -168,6 +168,8 @@ def main(argv=None):
     foreign.add_argument("--independent-expected",type=Path)
     foreign.add_argument("--out",type=Path,required=True)
     foreign.add_argument("--timeout",type=int,default=90)
+    foreign.add_argument("--test-scope",choices=("full","selected"),default="full",
+                         help="Full project tests by default; selected is explicitly partial")
     foreign.add_argument("--acknowledge-project-code-execution",action="store_true")
     foreign.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
@@ -192,12 +194,15 @@ def main(argv=None):
             faults=tuple(args.faults.split(",")),
             independent_expected=args.independent_expected,
             acknowledge_code_execution=args.acknowledge_project_code_execution,
-            timeout=args.timeout)
+            timeout=args.timeout,test_scope=args.test_scope)
         write_external_report(report,args.out)
         print(json.dumps({
             "project":report["project"],
             "actual_engine":report["engine"],
             "independent_gold_supplied":report["independent_gold_supplied"],
+            "test_scope":report["test_scope"],
+            "baseline_tests_executed":report["baseline_tests_executed"],
+            "baseline_manifest_test_count":report["baseline_manifest_test_count"],
             "cases":[{"fault":c["fault"],"outcome":c["outcome"]}
                      for c in report["cases"]],
             "evidence_path":str(args.out),
