@@ -147,6 +147,12 @@ def main(argv=None):
     assess.add_argument("--seed",type=int,default=20261119)
     assess.add_argument("--out-dir",type=Path,required=True)
     assess.add_argument("--fail-on-unsafe",action="store_true")
+    inspect=cmd.add_parser(
+        "external-dbt-inspect",
+        help="Inspect a local dbt project's seed mutation candidates without running dbt",
+    )
+    inspect.add_argument("--project-dir",type=Path,required=True)
+    inspect.add_argument("--out",type=Path)
     foreign=cmd.add_parser(
         "external-dbt",
         help="Execute real dbt/DuckDB mutations against an unfamiliar seed-backed local project",
@@ -165,6 +171,17 @@ def main(argv=None):
     foreign.add_argument("--acknowledge-project-code-execution",action="store_true")
     foreign.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
+    if args.command=="external-dbt-inspect":
+        from .external_dbt import inspect_external_project
+        report=inspect_external_project(args.project_dir)
+        payload=json.dumps(report,indent=2,sort_keys=True)+"\n"
+        if args.out:
+            args.out.parent.mkdir(parents=True,exist_ok=True)
+            if args.out.is_symlink() or args.out.exists():
+                parser.error("inspection output must be a new path")
+            args.out.write_text(payload,encoding="utf8")
+        print(payload,end="")
+        return 0
     if args.command=="external-dbt":
         from .external_dbt import run_external_campaign, write_external_report
         report=run_external_campaign(
