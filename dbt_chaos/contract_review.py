@@ -275,12 +275,12 @@ def review_case(contract: dict, events: list[dict], case: dict,
                 and case["ticket"].get("external_receipt", {}).get("verified")):
             source = project_source(contract, events)
             table = case["candidate"]["table"]
-            original = next(
+            attested_row = next(
                 row for row in source[table]
                 if row["row_id"] == case["candidate"]["row_id"])
             verifier_key = secrets.token_bytes(32)
             authentic_receipt = issue_simulated_receipt(
-                contract, original, verifier_key)
+                contract, attested_row, verifier_key)
             receipt_decision = verify_scoped_correction(
                 contract, case["initial"], candidate, case["candidate"],
                 authentic_receipt, verifier_key)
