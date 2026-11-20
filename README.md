@@ -4,6 +4,32 @@
 
 Status: experimental v0.2. The framework is synthetic-only and makes no claim to exercise every possible real-world fault.
 
+## Experimental: test an unfamiliar seed-backed dbt project
+
+The new external-project adapter executes **real dbt Core + DuckDB** in
+separate temporary copies of a caller-provided, reviewed dbt project.
+It compares source amount changes, duplicate deliveries and lost rows
+against the project's actual dbt tests. With a separately provided
+trusted expected-output CSV, it distinguishes detected errors from
+**wrong published business values that passed every selected dbt test**.
+Without independent truth, it calls mismatches output drift, not corruption.
+
+~~~bash
+python -m pip install -e '.[dbt]'
+dbt-chaos external-dbt --project-dir tests/fixtures/foreign_dbt_project \
+  --model gold_revenue --seed-table payments \
+  --column amount_cents --match-column payment_id --match-value 2 \
+  --delta 2000 --independent-expected tests/fixtures/foreign_expected_gold.csv \
+  --acknowledge-project-code-execution \
+  --out /tmp/external-dbt-report.json
+~~~
+
+**Security warning:** dbt projects can run macros/hooks and code.
+A copied project is **not** a sandbox; use a dedicated offline,
+credential-free throwaway worker and trusted project code. Currently
+supports only DuckDB-compatible, seed-backed models.
+[External-project adapter scope and threat model](docs/EXTERNAL_DBT_ADAPTER.md).
+
 ## New: one-command executed-SQL resilience assessment
 
 Run a full synthetic **procurement + grants** assessment without API keys,
