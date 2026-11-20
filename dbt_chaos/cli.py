@@ -166,6 +166,8 @@ def main(argv=None):
     foreign.add_argument("--delta",type=int,default=2000)
     foreign.add_argument("--faults",default="amount_shift,duplicate_row,drop_row")
     foreign.add_argument("--independent-expected",type=Path)
+    foreign.add_argument("--metric-column",
+                         help="Numeric output column to score against independent reference")
     foreign.add_argument("--out",type=Path,required=True)
     foreign.add_argument("--timeout",type=int,default=90)
     foreign.add_argument("--test-scope",choices=("full","selected"),default="full",
@@ -194,7 +196,8 @@ def main(argv=None):
             faults=tuple(args.faults.split(",")),
             independent_expected=args.independent_expected,
             acknowledge_code_execution=args.acknowledge_project_code_execution,
-            timeout=args.timeout,test_scope=args.test_scope)
+            timeout=args.timeout,test_scope=args.test_scope,
+            metric_column=args.metric_column)
         write_external_report(report,args.out)
         print(json.dumps({
             "project":report["project"],
@@ -203,6 +206,9 @@ def main(argv=None):
             "test_scope":report["test_scope"],
             "baseline_tests_executed":report["baseline_tests_executed"],
             "baseline_manifest_test_count":report["baseline_manifest_test_count"],
+            "metric_column":report["metric_column"],
+            "benign_controls_run":report["benign_controls_run"],
+            "benign_false_alarms":report["benign_false_alarms"],
             "cases":[{"fault":c["fault"],"outcome":c["outcome"]}
                      for c in report["cases"]],
             "evidence_path":str(args.out),
