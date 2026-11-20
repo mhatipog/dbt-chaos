@@ -6,6 +6,7 @@ on:
     paths:
       - 'dbt_chaos/contract_review.py'
       - 'tests/test_contract_review.py'
+      - 'dbt_chaos/contract_receipt.py'
       - 'tests/test_contract_cli.py'
       - 'dbt_chaos/cli.py'
       - '.github/workflows/contract-review.yml'
@@ -64,6 +65,8 @@ jobs:
               assert a['policy_results']['selected_ungated_publication']['wrong_case_count']==3
               assert a['policy_results']['selected_source_only_gate']['wrong_case_count']==1
               assert a['policy_results']['selected_attested_gate']['wrong_case_count']==0
+              assert a['policy_results']['selected_provider_receipt_gate']['wrong_case_count']==0
+              assert a['policy_results']['selected_provider_receipt_gate']['gate_review_required']==3
               assert a['policy_results']['selected_source_only_gate']['gate_review_required']==4
               assert k['policy_results']['selected_ungated_publication']['wrong_case_count']==1
               assert a['case_evidence_categories']['attested_credit_recovery']=='beneficial_repair'
