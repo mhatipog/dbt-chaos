@@ -26,6 +26,7 @@ import random
 from typing import Any, Protocol
 
 from .contract_sql import build_sql_pack, run_quality_checks_on_sources
+from .contract_publication import plan_publication
 from .process_contract import (
     ROLES, columns_for, delivered_source_oracle, event_business_oracle,
     project_source, run_sqlite_reference, simulate_process, validate_contract,
@@ -33,7 +34,7 @@ from .process_contract import (
 from .relay_platform_replay import score_publication
 
 OPERATIONS = ("keep", "edit_cell", "drop_row", "drop_entity_versions", "replay_delivery")
-POLICIES = ("raw", "monitor", "block_on_detection", "evidence_gate", "attested_gate")
+POLICIES = ("raw", "monitor", "block_on_detection", "targeted_hold", "evidence_gate", "attested_gate")
 FORMAT = "dbt_chaos_contract_agent_v1"
 TICKET_KINDS = (
     "credit_reconciliation", "party_category_sync",
@@ -432,6 +433,22 @@ def score_one_decision(contract: dict, truth: dict, clean: dict,
             set(ledger) if blocked else set()),
         "disposition": "withheld_all" if blocked else "published",
         "quality": observed,
+        "input_changed": changed != clean,
+    }
+    # The targeted policy knows only source-lineage relationships, not truth.
+    release = plan_publication(contract, changed, alerts)
+    held = (set(ledger) | set(raw_gold)) if release["global_hold"] else {
+        tuple(key.split("|", 1)) for key in release["known_held_groups"]
+    }
+    published = {key: value for key, value in raw_gold.items()
+                 if key not in held} if not release["global_hold"] else {}
+    controls["targeted_hold"] = {
+        "publication": score_publication(ledger, published, held),
+        "disposition": release["status"],
+        "quality": observed,
+        "known_source_held_groups": release["known_held_groups"],
+        "lineage_reasoning": release["reasons"],
+        "physical_source_quarantines": release["quarantined_physical_rows"],
         "input_changed": changed != clean,
     }
     gate_decisions = {}
