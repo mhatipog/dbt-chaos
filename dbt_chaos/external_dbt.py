@@ -424,43 +424,85 @@ def _public_mutation(metadata: dict) -> dict:
 
 
 def _numeric_impact(gold: dict | None, observed: dict,
-                    metric_column: str | None) -> dict | None:
-    """Measure trusted numeric output delta; unit is explicitly caller-defined."""
+                    metric_column: str | None,
+                    business_key: str | None = None) -> dict | None:
+    """Measure both net and per-key gross error without exposing business keys."""
     if metric_column is None or gold is None:
         return None
     if gold["columns"] != observed["columns"]:
         raise ExternalProjectError("numeric comparison requires aligned columns")
     if metric_column not in gold["columns"]:
         raise ExternalProjectError("metric column missing from reference output")
-    index = gold["columns"].index(metric_column)
+    if business_key is not None and business_key not in gold["columns"]:
+        raise ExternalProjectError("business key missing from reference output")
+    metric_index = gold["columns"].index(metric_column)
 
-    def total(rows: list) -> Decimal:
-        amount = Decimal(0)
-        for row in rows:
-            item = row[index]
-            if item is None:
-                raise ExternalProjectError(
-                    "numeric metric has NULL, cannot score its financial impact")
-            try:
-                value = Decimal(item)
-            except (InvalidOperation, TypeError, ValueError) as exc:
-                raise ExternalProjectError(
-                    "metric values must all be finite numeric text") from exc
-            if not value.is_finite():
-                raise ExternalProjectError("numeric metric contains nonfinite value")
-            amount += value
+    def value(row: tuple) -> Decimal:
+        entry = row[metric_index]
+        if entry is None:
+            raise ExternalProjectError(
+                "numeric metric has NULL, cannot score financial impact")
+        try:
+            amount = Decimal(entry)
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ExternalProjectError(
+                "metric values must all be finite numeric text") from exc
+        if not amount.is_finite():
+            raise ExternalProjectError("numeric metric contains nonfinite value")
         return amount
 
-    expected, actual = total(gold["rows"]), total(observed["rows"])
+    expected = sum((value(r) for r in gold["rows"]), Decimal(0))
+    actual = sum((value(r) for r in observed["rows"]), Decimal(0))
     signed = actual - expected
-    return {
+    result = {
         "metric_column": metric_column,
         "metric_unit": "as_declared_by_caller_not_inferred",
         "expected_total": str(expected),
         "actual_total": str(actual),
         "signed_error": str(signed),
         "absolute_error": str(abs(signed)),
+        "business_key_column": business_key,
+        "gross_absolute_error": None,
+        "affected_business_key_count": None,
+        "missing_business_key_count": None,
+        "unexpected_business_key_count": None,
+        "net_error_masks_offsetting_errors": None,
     }
+    if business_key is None:
+        return result
+
+    index = gold["columns"].index(business_key)
+
+    def aggregate(rows: list) -> dict[str, Decimal]:
+        sums: dict[str, Decimal] = {}
+        for row in rows:
+            key = row[index]
+            if key is None or key == "":
+                raise ExternalProjectError(
+                    "empty/null business key makes per-key impact unverifiable")
+            sums[key] = sums.get(key, Decimal(0)) + value(row)
+        return sums
+
+    truth = aggregate(gold["rows"])
+    published = aggregate(observed["rows"])
+    keys = set(truth) | set(published)
+    differences = {
+        key: published.get(key, Decimal(0)) - truth.get(key, Decimal(0))
+        for key in keys
+    }
+    gross = sum((abs(v) for v in differences.values()), Decimal(0))
+    result.update({
+        "gross_absolute_error": str(gross),
+        "affected_business_key_count": sum(
+            mismatch != 0 for mismatch in differences.values()),
+        "missing_business_key_count": len(set(truth) - set(published)),
+        "unexpected_business_key_count": len(set(published) - set(truth)),
+        "net_error_masks_offsetting_errors": gross > abs(signed),
+        "reference_business_key_count": len(truth),
+        "observed_business_key_count": len(published),
+    })
+    return result
+
 
 def _copy_project(info: dict, dest: Path) -> Path:
     project = dest / "project"
@@ -541,6 +583,7 @@ def run_external_campaign(
     faults: tuple[str, ...], independent_expected: Path | None,
     acknowledge_code_execution: bool, timeout: int = 90,
     test_scope: str = "full", metric_column: str | None = None,
+    business_key: str | None = None,
 ) -> dict[str, Any]:
     """Run independent fresh-DB trials; never touch the user's warehouse."""
     if not acknowledge_code_execution:
@@ -550,6 +593,10 @@ def run_external_campaign(
     for label, value in (("model", model), ("seed", seed_table),
                          ("column", column), ("match column", match_column)):
         _validate_name(value, label)
+    if business_key is not None:
+        _validate_name(business_key, "business key")
+        if metric_column is None:
+            raise ExternalProjectError("business key requires an explicit metric column")
     if metric_column is not None:
         _validate_name(metric_column, "metric column")
         if independent_expected is None:
@@ -591,7 +638,7 @@ def run_external_campaign(
         raise ExternalProjectError(
             "clean baseline disagrees with supplied independent gold; "
             "must repair/reference-validate before mutation scoring")
-    baseline_metric = _numeric_impact(gold, baseline, metric_column)
+    baseline_metric = _numeric_impact(gold, baseline, metric_column, business_key)
     cases = []
     for mutation, metadata in trials:
         item = _trial(info, mutation=mutation, source_file=source_file,
@@ -642,7 +689,8 @@ def run_external_campaign(
             "next_business_invariant_to_check": suggestion,
             "outcome": outcome, "difference_from_baseline": difference,
             "difference_from_independent_truth": truth,
-            "numeric_business_impact": _numeric_impact(gold, item["snapshot"], metric_column),
+            "numeric_business_impact": _numeric_impact(
+                gold, item["snapshot"], metric_column, business_key),
             "test_verdict": item["test_verdict"],
             "tests_executed": item["stages"]["test"]["tests_executed"],
             "manifest_test_count": item["stages"]["test"]["manifest_test_count"],
@@ -680,6 +728,7 @@ def run_external_campaign(
             clean["stages"]["test"]["tests_coverage_complete"],
         "baseline_rows": baseline["row_count"],
         "metric_column": metric_column,
+        "business_key": business_key,
         "baseline_numeric_business_impact": baseline_metric,
         "independent_gold_supplied": gold is not None,
         "external_gold_provenance_cryptographically_verified": False,
