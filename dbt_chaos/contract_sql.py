@@ -181,6 +181,48 @@ def evaluate_public_quality(public_dir: Path) -> dict[str, Any]:
     }
 
 
+def run_quality_checks_on_sources(
+    contract: dict, tables: dict[str, list[dict]],
+) -> list[dict]:
+    """Actually execute observable source-only quality SQL on a snapshot.
+
+    This intentionally uses no hidden process/event oracle. It does not
+    assert that an apparently plausible amount is historically accurate.
+    """
+    c = validate_contract(contract)
+    query = build_sql_pack(c)["quality_checks.sql"]
+    if set(tables) != {c["roles"][r]["table"] for r in ROLES}:
+        raise ValueError("expected exactly the contract's source tables")
+    with sqlite3.connect(":memory:") as db:
+        for role in ROLES:
+            desc = c["roles"][role]
+            columns = columns_for(c, role)
+            numeric = {"row_id", "version", desc["id"]}
+            if role == "document":
+                numeric.update((desc["party_fk"], desc["gross"]))
+            elif role == "movement":
+                numeric.update((desc["document_fk"], desc["amount"]))
+            ddl = ", ".join(
+                f'"{column}" {"INTEGER" if column in numeric else "TEXT"}'
+                for column in columns
+            )
+            db.execute(f'CREATE TABLE "{desc["table"]}" ({ddl})')
+            data = tables[desc["table"]]
+            if any(set(row) != set(columns) for row in data):
+                raise ValueError("source table does not match declared columns")
+            if data:
+                placeholders = ",".join("?" for _ in columns)
+                db.executemany(
+                    f'INSERT INTO "{desc["table"]}" VALUES ({placeholders})',
+                    [tuple(row[col] for col in columns) for row in data],
+                )
+        rows = db.execute(query).fetchall()
+    return [
+        dict(zip(("check_name", "severity", "entity_id", "related_id"), row))
+        for row in rows
+    ]
+
+
 def main() -> None:
     import argparse
     parser=argparse.ArgumentParser(description="Run generated SQL quality probes on public challenge CSVs")
