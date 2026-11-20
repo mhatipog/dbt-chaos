@@ -112,7 +112,7 @@ jobs:
             --model stg_payments --seed-table raw_payments \
             --column amount --match-column id --match-value 2 \
             --delta 500 --faults amount_shift,duplicate_row,drop_row,reorder_rows \
-            --test-scope full --metric-column amount \
+            --test-scope full --metric-column amount --business-key payment_id \
             --independent-expected /independent.csv \
             --acknowledge-project-code-execution \
             --fail-on-silent \
@@ -135,6 +135,9 @@ jobs:
           assert cases["duplicate_row"]["outcome"] == "detected_business_mismatch", cases
           assert cases["duplicate_row"]["failed_test_ids"]
           assert cases["amount_shift"]["numeric_business_impact"]["signed_error"] in ("-5.0", "-5")
+          assert cases["amount_shift"]["numeric_business_impact"]["gross_absolute_error"] in ("5.0", "5")
+          assert cases["amount_shift"]["numeric_business_impact"]["affected_business_key_count"] == 1
+          assert cases["reorder_rows"]["numeric_business_impact"]["affected_business_key_count"] == 0
           assert r["benign_controls_run"] == 1 and r["benign_false_alarms"] == 0
           assert cases["reorder_rows"]["outcome"] == "benign_control_passed", cases
           assert "id=2" not in json.dumps(r)
