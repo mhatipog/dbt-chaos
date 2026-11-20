@@ -210,10 +210,12 @@ def _run_dbt(
     binary = shutil.which("dbt")
     if binary is None:
         raise ExternalProjectError("dbt CLI unavailable: install -e '.[dbt]'")
+    # dbt Core 1.10 accepts --project-dir/--profiles-dir on the
+    # *subcommand*, not before it as top-level CLI options.
     args = [
-        binary, "--project-dir", str(project),
+        binary, "--no-use-colors", cmd,
+        "--project-dir", str(project),
         "--profiles-dir", str(profiles),
-        "--no-use-colors", cmd,
     ]
     if cmd == "seed":
         args += ["--full-refresh"]
