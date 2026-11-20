@@ -138,7 +138,29 @@ def main(argv=None):
     cv.add_argument("--public-dir",type=Path,required=True)
     cv.add_argument("--private-dir",type=Path,required=True)
     cv.add_argument("--out",type=Path)
+    cw=cmd.add_parser("contract-casework",help="Demonstrate incorrect publication, targeted pending hold and signed receipt recovery")
+    cw.add_argument("--contract",type=Path,required=True)
+    cw.add_argument("--seed",type=int,default=20261119)
+    cw.add_argument("--out",type=Path,required=True)
+    cw.add_argument("--fail-on-incorrect-final",action="store_true")
     args=parser.parse_args(argv)
+    if args.command=="contract-casework":
+        from .contract_review import make_review_cases
+        from .contract_casework import demonstrate_contract_casework
+        contract_data=json.loads(args.contract.read_text(encoding="utf8"))
+        events,cases=make_review_cases(contract_data,args.seed)
+        result=demonstrate_contract_casework(contract_data,events,cases[4])
+        args.out.parent.mkdir(parents=True,exist_ok=True)
+        args.out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf8")
+        for step in result["stages"]:
+            print(step["stage"],step["publication_status"],
+                  "wrong published cents:",
+                  step["score"]["false_published_l1_cents"],
+                  "correct business value:",
+                  step["score"]["fraction_of_correct_business_value_published"])
+        return (2 if args.fail_on_incorrect_final and
+                result["stages"][-1]["score"]["status"]!="correctly_published"
+                else 0)
     if args.command in ("contract-agent","contract-review"):
         from .process_contract import validate_contract
         contract_data=validate_contract(json.loads(args.contract.read_text(encoding="utf8")))
