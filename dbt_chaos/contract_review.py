@@ -19,6 +19,8 @@ not an imagined claim in a model response.
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 from copy import deepcopy
 from hashlib import sha256
 import json
@@ -31,8 +33,8 @@ from .contract_agent import (
 )
 from .contract_sql import run_quality_checks_on_sources
 from .process_contract import (
-    event_business_oracle, project_source, run_sqlite_reference,
-    simulate_process, validate_contract,
+    ROLES, columns_for, event_business_oracle, project_source,
+    run_sqlite_reference, simulate_process, validate_contract,
 )
 from .relay_platform_replay import score_publication
 
@@ -313,6 +315,22 @@ def run_review_experiment(*, contract: dict, reviewer: Reviewer,
         if public_dir is not None:
             folder=public_dir/"cases"/case["id"]
             folder.mkdir(parents=True,exist_ok=True)
+            initial_source=case["initial"]
+            proposed_source,_=candidate_source(
+                c,initial_source,case["ticket"],case["candidate"])
+            for variant,snapshot in (("initial",initial_source),
+                                     ("proposed",proposed_source)):
+                for role in ROLES:
+                    table=c["roles"][role]["table"]
+                    columns=columns_for(c,role)
+                    target=folder/"inputs"/variant/(table+".csv")
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    buf=io.StringIO(newline="")
+                    writer=csv.DictWriter(buf,fieldnames=columns,
+                                          lineterminator="\n")
+                    writer.writeheader()
+                    writer.writerows(snapshot[table])
+                    target.write_text(buf.getvalue(),encoding="utf8")
             (folder/"review_ticket.json").write_text(
                 json.dumps(payload,indent=2,sort_keys=True)+"\n")
             (folder/"raw_response.txt").write_text(response+"\n")
