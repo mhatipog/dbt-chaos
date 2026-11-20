@@ -63,8 +63,10 @@ class BalancedReviewerTests(unittest.TestCase):
                                  ["selected_source_only_gate"]["wrong_case_count"])
                 self.assertEqual(0,a["policy_results"]
                                  ["selected_attested_gate"]["wrong_case_count"])
-                self.assertEqual(3,a["policy_results"]
-                                 ["selected_source_only_gate"]["gate_review_required"]+0)
+                # Three unsupported edits PLUS one genuine correction whose
+                # independently trusted receipt is unavailable to this tier.
+                self.assertEqual(4,a["policy_results"]
+                                 ["selected_source_only_gate"]["gate_review_required"])
                 # The prior wrong source in the verified-repair scenario is
                 # not repaired by a source-only gate without trusted evidence.
                 case=next(x for x in apply["cases"]
