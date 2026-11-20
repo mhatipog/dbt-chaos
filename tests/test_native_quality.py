@@ -1,12 +1,15 @@
 """Real DuckDB+dbt warehouse-side quarantine/release tests (opt-in only)."""
 from copy import deepcopy
 import unittest
+import importlib.util
 
 from dbt_chaos.commerce import CommerceCase, oracle, source_contract_alerts
 from dbt_chaos.commerce_runner import run_case
 from dbt_chaos.protection import recorded_qwen_source_cases
 
 
+@unittest.skipUnless(importlib.util.find_spec("duckdb") is not None,
+                     "requires optional dbt/DuckDB extra")
 class NativeDbtQualityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
