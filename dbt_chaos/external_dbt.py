@@ -101,9 +101,14 @@ def _inventory(root: Path) -> dict:
                 raise ExternalProjectError("project exceeds bounded file/size limit")
     if Path("dbt_project.yml") not in files:
         raise ExternalProjectError("project config missing from allowed inventory")
+    fingerprint = sha256()
+    for relative in sorted(files):
+        fingerprint.update(relative.as_posix().encode("utf8") + b"\\0")
+        fingerprint.update(sha256((root / relative).read_bytes()).digest())
     return {
         "name": name, "profile": profile, "root": root,
         "files": sorted(files), "total_bytes": size,
+        "project_scope_sha256": fingerprint.hexdigest(),
     }
 
 
@@ -163,6 +168,7 @@ def inspect_external_project(project_dir: Path) -> dict:
         "schema_only_no_row_values_exposed": True,
         "dbt_or_macro_code_executed": False,
         "files_in_allowed_scope": len(info["files"]),
+        "project_scope_sha256": info["project_scope_sha256"],
         "model_file_names_not_compiled_dag": models,
         "seeds": seeds,
         "note": "Inspect and review target code; a matching seed is not "
@@ -654,6 +660,11 @@ def run_external_campaign(
         "model": model, "model_node_id": baseline["node_id"],
         "seed": seed_table, "seed_path": source_file.as_posix(),
         "original_files": len(info["files"]),
+        "project_scope_sha256": info["project_scope_sha256"],
+        "original_seed_sha256": sha256(source.read_bytes()).hexdigest(),
+        "independent_reference_sha256": (
+            sha256(independent_expected.read_bytes()).hexdigest()
+            if independent_expected is not None else None),
         "clean_baseline_test_verdict": clean["test_verdict"],
         "test_scope": test_scope,
         "test_scope_description": (
