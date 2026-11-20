@@ -119,7 +119,7 @@ def _seed_path(info: dict, table: str) -> Path:
 def _read_csv(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     if path.stat().st_size > 4_000_000:
         raise ExternalProjectError("single seed CSV too large for bounded run")
-    with path.open(newline="", encoding="utf8-sig") as f:
+    with path.open(newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         columns = reader.fieldnames
         if not columns or len(set(columns)) != len(columns):
