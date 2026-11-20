@@ -546,6 +546,11 @@ def run_external_campaign(
         "clean_baseline_test_verdict": clean["test_verdict"],
         "baseline_rows": baseline["row_count"],
         "independent_gold_supplied": gold is not None,
+        "external_gold_provenance_cryptographically_verified": False,
+        "gold_provenance_assumption": (
+            "caller_supplied_and_claimed_independent_not_verifiable_by_adapter"
+            if gold is not None else "no_external_gold"),
+        "fault_proposals_authored_by_llm": False,
         "clean_baseline_matches_independent_gold":
             baseline_truth["equal"] if baseline_truth else None,
         "causal_claim": "separate_bounded_seed_mutation_runs_not_agent_error_rates",
