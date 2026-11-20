@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import Counter
 from copy import deepcopy
 import unittest
+import importlib.util
 
 from dbt_chaos.commerce import CommerceCase, oracle
 from dbt_chaos.commerce_runner import run_case
@@ -13,6 +14,8 @@ from dbt_chaos.reconciliation import (
 from dbt_chaos.relay_platform_replay import score_publication
 
 
+@unittest.skipUnless(importlib.util.find_spec("duckdb") is not None,
+                     "requires optional dbt/DuckDB extra")
 class NativeReconciliationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

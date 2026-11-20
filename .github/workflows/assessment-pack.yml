@@ -1,0 +1,60 @@
+name: Business-truth assessment pack (offline real SQL)
+on:
+  push:
+    branches: [feature/assessment-pack-20261120]
+    paths:
+      - 'dbt_chaos/resilience_assessment.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_resilience_assessment.py'
+      - 'docs/ASSESSMENT_PACK.md'
+      - '.github/workflows/assessment-pack.yml'
+  pull_request:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/resilience_assessment.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_resilience_assessment.py'
+      - 'docs/ASSESSMENT_PACK.md'
+      - '.github/workflows/assessment-pack.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-assessment:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install packaged CLI and compile
+        run: |
+          python -m pip install --disable-pip-version-check -e .
+          python -m compileall -q dbt_chaos
+      - name: Test actual SQL, private oracle separation, forged result handling
+        run: python -m unittest discover -s tests -p test_resilience_assessment.py -v
+      - name: Produce complete reproducible standalone evidence pack
+        run: |
+          dbt-chaos assess-demo --seed 20261119 --out-dir /tmp/dbt-chaos-assessment --fail-on-unsafe
+          (cd /tmp/dbt-chaos-assessment && sha256sum -c SHA256SUMS)
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/dbt-chaos-assessment')
+          report=json.loads((root/'assessment.json').read_text())
+          assert report['controls_passed'] is True
+          assert report['domain_count']==2
+          assert report['ticket_count']==12
+          assert not report['no_live_llm_called'] is False
+          assert 'process_events.jsonl' not in (root/'assessment.json').read_text()
+          print('Final evidence:', [(d['domain'],
+                 d['policies']['always_apply']['wrong_case_count'],
+                 d['policies']['always_keep']['wrong_case_count'],
+                 d['policies']['source_only_gate']['wrong_case_count'])
+                 for d in report['domains']])
+          PY

@@ -143,7 +143,17 @@ def main(argv=None):
     cw.add_argument("--seed",type=int,default=20261119)
     cw.add_argument("--out",type=Path,required=True)
     cw.add_argument("--fail-on-incorrect-final",action="store_true")
+    assess=cmd.add_parser("assess-demo",help="Run two-domain executed-SQL resilience assessment, emit JSON/Markdown/HTML")
+    assess.add_argument("--seed",type=int,default=20261119)
+    assess.add_argument("--out-dir",type=Path,required=True)
+    assess.add_argument("--fail-on-unsafe",action="store_true")
     args=parser.parse_args(argv)
+    if args.command=="assess-demo":
+        from .resilience_assessment import run_assessment, write_assessment
+        report=run_assessment(args.seed)
+        result=write_assessment(report,args.out_dir)
+        print(json.dumps(result,indent=2,sort_keys=True))
+        return 2 if args.fail_on_unsafe and not report["controls_passed"] else 0
     if args.command=="contract-casework":
         from .contract_review import make_review_cases
         from .contract_casework import demonstrate_contract_casework
