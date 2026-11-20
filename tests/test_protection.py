@@ -1,6 +1,7 @@
 """Protection benchmark: do not confuse warning, quarantine, and trusted recovery."""
 from copy import deepcopy
 import unittest
+import importlib.util
 
 from dbt_chaos.commerce import oracle, source_contract_alerts
 from dbt_chaos.full_datasets import enhanced_source_alerts
@@ -125,6 +126,8 @@ class ObservableProtectionTests(unittest.TestCase):
         self.assertEqual(self.truth, self.by_case["clean_control"])
 
 
+@unittest.skipUnless(importlib.util.find_spec("duckdb") is not None,
+                     "requires optional dbt/DuckDB extra")
 class ExecutablePolicyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
