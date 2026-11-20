@@ -48,6 +48,16 @@ class ExternalProjectUnitTests(unittest.TestCase):
         self.assertEqual(original, SOURCE.read_bytes())
         self.assertEqual(3, len(files))
 
+    def test_null_and_empty_string_are_not_equivalent_business_results(self):
+        baseline = {"columns": ["id", "value"],
+                    "rows": [("a", None), ("b", "")]}
+        mutated = {"columns": ["id", "value"],
+                   "rows": [("a", ""), ("b", "")]}
+        difference = _compare(baseline, mutated)
+        self.assertFalse(difference["equal"])
+        self.assertEqual(1, difference["removed_rows"])
+        self.assertEqual(1, difference["added_rows"])
+
     def test_provenance_is_never_baseline_generated(self):
         expect = _trusted_expected(
             TRUTH, ["order_id", "revenue_cents"])
@@ -172,6 +182,11 @@ class ExternalProjectRealDbtTests(unittest.TestCase):
         self.assertEqual("foreign_retail", report["project"])
         self.assertTrue(report["clean_baseline_matches_independent_gold"])
         self.assertEqual("tests_passed", report["clean_baseline_test_verdict"])
+        self.assertEqual("full", report["test_scope"])
+        self.assertTrue(report["baseline_test_coverage_complete"])
+        self.assertGreaterEqual(report["baseline_manifest_test_count"], 1)
+        self.assertEqual(report["baseline_manifest_test_count"],
+                         report["baseline_tests_executed"])
         by_fault = {c["fault"]: c for c in report["cases"]}
         self.assertEqual(
             "silent_business_mismatch", by_fault["amount_shift"]["outcome"])
@@ -180,6 +195,8 @@ class ExternalProjectRealDbtTests(unittest.TestCase):
             "detected_business_mismatch", by_fault["duplicate_row"]["outcome"])
         self.assertEqual(
             "test_detected", by_fault["duplicate_row"]["test_verdict"])
+        self.assertTrue(by_fault["duplicate_row"]["failed_test_ids"])
+        self.assertEqual(0, by_fault["amount_shift"]["unexecuted_manifest_test_count"])
         self.assertEqual("silent_business_mismatch", by_fault["drop_row"]["outcome"])
         # A missing row with no completeness rule can also escape schema tests.
         self.assertEqual(2, report["silent_business_mismatches"])
