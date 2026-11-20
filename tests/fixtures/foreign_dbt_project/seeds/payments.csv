@@ -1,0 +1,5 @@
+payment_id,order_id,kind,amount_cents
+1,100,capture,10000
+2,100,refund,4900
+3,101,capture,20000
+4,101,refund,2500
