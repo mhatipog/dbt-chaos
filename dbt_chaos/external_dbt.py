@@ -233,19 +233,27 @@ def _run_dbt(
         return {"status": "timeout", "returncode": None,
                 "test_statuses": {}, "tests_executed": 0}
     statuses = Counter()
+    failed_tests = []
     results = project / "target" / "run_results.json"
     # dbt rewrites this artifact after each command.
     if results.is_file():
         try:
             data = json.loads(results.read_text(encoding="utf8"))
             for item in data.get("results", []):
-                statuses[str(item.get("status", "unknown")).lower()] += 1
+                status = str(item.get("status", "unknown")).lower()
+                statuses[status] += 1
+                if (cmd == "test" and status in ("fail", "warn", "error")
+                        and len(failed_tests) < 100):
+                    identifier = str(item.get("unique_id", ""))
+                    # Limit untrusted project metadata for public CI evidence.
+                    failed_tests.append(identifier[:220])
         except (OSError, ValueError, TypeError):
             statuses["unreadable_run_results"] += 1
     result = {
         "status": "ok" if proc.returncode == 0 else "nonzero",
         "returncode": proc.returncode,
         "test_statuses": dict(sorted(statuses.items())),
+        "failed_test_ids": failed_tests,
         "tests_executed": sum(statuses.values()) if cmd == "test" else 0,
     }
     # Deliberately opt-in diagnostic for synthetic CI only. dbt stdout can
@@ -410,6 +418,9 @@ def run_external_campaign(
         raise ExternalProjectError(
             f"clean baseline dbt {failed} did not complete "
             f"(status={detail.get('status')}, code={detail.get('returncode')})")
+    if clean.get("test_verdict") not in ("tests_passed", "no_tests_executed"):
+        raise ExternalProjectError(
+            "clean dbt tests must be green before attributing fault detection")
     baseline = clean["snapshot"]
     gold = (_trusted_expected(independent_expected, baseline["columns"])
             if independent_expected is not None else None)
@@ -447,13 +458,20 @@ def run_external_campaign(
                 outcome = "business_mismatch_unverified_test_execution"
         else:
             outcome = "unchanged_business_output"
+        suggestion = {
+            "amount_shift": "Reconcile amount against independent provider/ledger events; nullability cannot verify plausible values",
+            "drop_row": "Test completeness against an independent event count or immutable delivery sequence",
+            "duplicate_row": "Enforce a stable business-key uniqueness invariant before aggregation",
+        }[metadata["fault"]]
         cases.append({
             "fault": metadata["fault"], "mutation": metadata,
+            "next_business_invariant_to_check": suggestion,
             "outcome": outcome, "difference_from_baseline": difference,
             "difference_from_independent_truth": truth,
             "test_verdict": item["test_verdict"],
             "tests_executed": item["stages"]["test"]["tests_executed"],
             "test_statuses": item["stages"]["test"]["test_statuses"],
+            "failed_test_ids": item["stages"]["test"].get("failed_test_ids", []),
             "output_rows": item["snapshot"]["row_count"],
         })
     return {
