@@ -1,0 +1,101 @@
+name: Balanced maintenance review — 3B model capacity control
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - '.github/workflows/contract-review-3b.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qwen3b-genuine-controlled-reviews:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 29
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install local CPU inference, free-only
+        run: |
+          python -m pip install --disable-pip-version-check -e . \
+            'llama-cpp-python>=0.3,<0.4' 'huggingface_hub>=0.26,<2'
+      - name: Download Qwen2.5-Coder 3B open-weight GGUF
+        run: |
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          file=hf_hub_download(
+            repo_id='Qwen/Qwen2.5-Coder-3B-Instruct-GGUF',
+            filename='qwen2.5-coder-3b-instruct-q4_k_m.gguf',
+            local_dir='/tmp/qwen3b')
+          print('Using local GGUF:',file)
+          PY
+      - name: Run identical 6-ticket review challenge, same prompt, larger model
+        run: |
+          mkdir -p /tmp/qwen3b-experiment
+          for domain in procurement grants; do
+            dbt-chaos contract-review \
+              --contract "contracts/${domain}.json" \
+              --agent llama \
+              --model /tmp/qwen3b/qwen2.5-coder-3b-instruct-q4_k_m.gguf \
+              --seed 20261119 \
+              --public-dir "/tmp/qwen3b-experiment/${domain}-public" \
+              --private-dir "/tmp/qwen3b-experiment/${domain}-private" \
+              --out "/tmp/qwen3b-experiment/${domain}-summary.json"
+          done
+      - name: Assert actual inference provenance and independent business scoring
+        run: |
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/qwen3b-experiment')
+          for domain in ('procurement','grants'):
+              pub=root/(domain+'-public')
+              pri=root/(domain+'-private')
+              s=json.loads((root/(domain+'-summary.json')).read_text())
+              r=json.loads((pri/'assessment.json').read_text())
+              m=json.loads((pub/'manifest.json').read_text())
+              assert r['review_decisions_generated_by_llm']
+              assert not r['candidate_proposals_authored_by_llm']
+              assert r['process_event_ledger_hidden_from_reviewer']
+              assert len(r['cases'])==6
+              assert len(s['model_sha256'])==64
+              assert s['policy_results']['always_apply_publication']['wrong_case_count']==3
+              assert s['policy_results']['always_keep_publication']['wrong_case_count']==1
+              assert not (pub/'process_events.jsonl').exists()
+              for filename,digest in m['files'].items():
+                  assert hashlib.sha256((pub/filename).read_bytes()).hexdigest()==digest
+              for case in r['cases']:
+                  assert set(case['selected_gate_results'])=={'source_only','attested'}
+                  assert case['model_decision']['decision'] in ('apply','keep','escalate')
+              print(domain,'parsed',s['parsed_model_decisions'],
+                    'applied',s['approved_candidates'],
+                    'correct decisions',s['correct_business_decisions'],
+                    'remaining wrong cases',
+                    s['policy_results']['selected_ungated_publication']['wrong_case_count'])
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: balanced-qwen3b-full-public-corpus
+          path: |
+            /tmp/qwen3b-experiment/procurement-public/
+            /tmp/qwen3b-experiment/grants-public/
+          retention-days: 2
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: balanced-qwen3b-private-evaluation
+          path: |
+            /tmp/qwen3b-experiment/procurement-private/
+            /tmp/qwen3b-experiment/grants-private/
+            /tmp/qwen3b-experiment/procurement-summary.json
+            /tmp/qwen3b-experiment/grants-summary.json
+          retention-days: 2
+          if-no-files-found: warn
