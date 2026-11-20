@@ -69,6 +69,30 @@ class ContractMaintenanceCLITests(unittest.TestCase):
                     self.assertEqual(3,len(list(
                         (pub/"cases"/"uncertain_credit"/"inputs"/"proposed").glob("*.csv"))))
 
+    def test_casework_cli_emits_all_three_publication_stages(self):
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            for domain in ("procurement","grants"):
+                with self.subTest(domain=domain):
+                    output=root/(domain+"-casework.json")
+                    out=StringIO()
+                    with redirect_stdout(out):
+                        result=main([
+                            "contract-casework", "--contract",
+                            str(Path("contracts")/(domain+".json")),
+                            "--seed","20261119","--out",str(output),
+                            "--fail-on-incorrect-final",
+                        ])
+                    self.assertEqual(0,result)
+                    saved=json.loads(output.read_text())
+                    self.assertEqual(3,len(saved["stages"]))
+                    self.assertEqual("silently_wrong",saved["stages"][0]["score"]["status"])
+                    self.assertEqual("partially_held",saved["stages"][1]["score"]["status"])
+                    self.assertEqual("correctly_published",saved["stages"][2]["score"]["status"])
+                    self.assertFalse(saved["source_ledger_present_in_release_planner"])
+                    self.assertFalse(saved["signing_key_exported"])
+                    self.assertIn("scoped_receipt_verified",out.getvalue())
+
     def test_model_path_missing_rejected_without_side_effects(self):
         with TemporaryDirectory() as tmp:
             root=Path(tmp)
