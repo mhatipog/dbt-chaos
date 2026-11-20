@@ -2,16 +2,46 @@
 
 **Vecture open-source R&D: engineer adverse data conditions, prove whether transformations remain correct, and measure tradeoffs.**
 
-Status: experimental v0.2. The framework is synthetic-only and makes no claim to exercise every possible real-world fault.
+Status: **experimental**. The published default branch remains v0.2; the advanced adapter, independent-project run and package checks are on **stacked draft PRs** until integrated. No customer production usage, market traction or full operational assurance is claimed.
+
+## Evidence upgrade — independent real dbt project, actual business metric, benign controls
+
+**Verified in GitHub Actions:** Chaos Lab ran the original
+[dbt Labs Jaffle Shop](https://github.com/dbt-labs/jaffle_shop_duckdb)
+at immutable commit \`20cc904370818ceab08cf19f8fd196e9e81def88\`
+inside a **network-disabled, non-root, read-only-container-runtime**.
+The whole dbt test suite was executed, with explicit test-population
+accounting. A plausible payment amount error passed the upstream
+tests, while a duplicated payment triggered an existing uniqueness
+test. A harmless input-row reordering control remained green.
+
+This is an external *example* repository with deliberately injected
+errors, **not** a newly discovered production vulnerability. The
+reference is independently implemented from the upstream frozen seed,
+not a payment-provider receipt. [Reproducible protocol and evidence
+limitations](docs/INDEPENDENT_BENCHMARK.md).
+
+The adapter additionally distinguishes SQL NULL from empty strings,
+scores signed and absolute monetary/metric discrepancies when supplied
+a justified independent reference, redacts source row identifiers in
+reports, fingerprints copied inputs and supports both **full dbt test
+coverage (default)** and explicitly partial selected-model scope.
+The \`reorder_rows\` control checks for false alarms and order-sensitive
+output changes.
+
+[First passing upstream run](https://github.com/mhatipog/dbt-chaos/actions/runs/44756230580) ·
+[Full v3 hardened result](https://github.com/mhatipog/dbt-chaos/actions/runs/44757010879) ·
+[Installed-wheel smoke test](https://github.com/mhatipog/dbt-chaos/actions/runs/44757796965).
 
 ## Experimental: test an unfamiliar seed-backed dbt project
 
 The new external-project adapter executes **real dbt Core + DuckDB** in
 separate temporary copies of a caller-provided, reviewed dbt project.
-It compares source amount changes, duplicate deliveries and lost rows
-against the project's actual dbt tests. With a separately provided
+It compares source amount changes, duplicate deliveries, lost rows and
+benign row reordering against the project's actual dbt tests. With a separately provided
 trusted expected-output CSV, it distinguishes detected errors from
-**wrong published business values that passed every selected dbt test**.
+**wrong published business values that passed the full observed dbt test suite**.
+A selected-model run is explicitly marked as partial, never full coverage.
 Without independent truth, it calls mismatches output drift, not corruption.
 
 ~~~bash
@@ -19,7 +49,9 @@ python -m pip install -e '.[dbt]'
 dbt-chaos external-dbt --project-dir tests/fixtures/foreign_dbt_project \
   --model gold_revenue --seed-table payments \
   --column amount_cents --match-column payment_id --match-value 2 \
-  --delta 2000 --independent-expected tests/fixtures/foreign_expected_gold.csv \
+  --delta 2000 --faults amount_shift,duplicate_row,drop_row,reorder_rows \
+  --test-scope full --metric-column revenue_cents \
+  --independent-expected tests/fixtures/foreign_expected_gold.csv \
   --acknowledge-project-code-execution \
   --out /tmp/external-dbt-report.json
 ~~~
