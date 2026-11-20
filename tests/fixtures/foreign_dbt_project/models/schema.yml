@@ -1,0 +1,21 @@
+version: 2
+seeds:
+  - name: payments
+    columns:
+      - name: payment_id
+        data_tests:
+          - unique
+          - not_null
+      - name: amount_cents
+        data_tests:
+          - not_null
+models:
+  - name: gold_revenue
+    columns:
+      - name: order_id
+        data_tests:
+          - unique
+          - not_null
+      - name: revenue_cents
+        data_tests:
+          - not_null

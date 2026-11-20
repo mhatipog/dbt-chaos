@@ -1,0 +1,9 @@
+name: foreign_retail
+version: "1.0.0"
+config-version: 2
+profile: foreign_retail
+model-paths: ["models"]
+seed-paths: ["seeds"]
+models:
+  foreign_retail:
+    +materialized: table

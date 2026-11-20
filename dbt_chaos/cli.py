@@ -147,7 +147,63 @@ def main(argv=None):
     assess.add_argument("--seed",type=int,default=20261119)
     assess.add_argument("--out-dir",type=Path,required=True)
     assess.add_argument("--fail-on-unsafe",action="store_true")
+    inspect=cmd.add_parser(
+        "external-dbt-inspect",
+        help="Inspect a local dbt project's seed mutation candidates without running dbt",
+    )
+    inspect.add_argument("--project-dir",type=Path,required=True)
+    inspect.add_argument("--out",type=Path)
+    foreign=cmd.add_parser(
+        "external-dbt",
+        help="Execute real dbt/DuckDB mutations against an unfamiliar seed-backed local project",
+    )
+    foreign.add_argument("--project-dir",type=Path,required=True)
+    foreign.add_argument("--model",required=True)
+    foreign.add_argument("--seed-table",required=True)
+    foreign.add_argument("--column",required=True)
+    foreign.add_argument("--match-column",required=True)
+    foreign.add_argument("--match-value",required=True)
+    foreign.add_argument("--delta",type=int,default=2000)
+    foreign.add_argument("--faults",default="amount_shift,duplicate_row,drop_row")
+    foreign.add_argument("--independent-expected",type=Path)
+    foreign.add_argument("--out",type=Path,required=True)
+    foreign.add_argument("--timeout",type=int,default=90)
+    foreign.add_argument("--acknowledge-project-code-execution",action="store_true")
+    foreign.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
+    if args.command=="external-dbt-inspect":
+        from .external_dbt import inspect_external_project
+        report=inspect_external_project(args.project_dir)
+        payload=json.dumps(report,indent=2,sort_keys=True)+"\n"
+        if args.out:
+            args.out.parent.mkdir(parents=True,exist_ok=True)
+            if args.out.is_symlink() or args.out.exists():
+                parser.error("inspection output must be a new path")
+            args.out.write_text(payload,encoding="utf8")
+        print(payload,end="")
+        return 0
+    if args.command=="external-dbt":
+        from .external_dbt import run_external_campaign, write_external_report
+        report=run_external_campaign(
+            project_dir=args.project_dir,
+            model=args.model,seed_table=args.seed_table,
+            column=args.column,match_column=args.match_column,
+            match_value=args.match_value,delta=args.delta,
+            faults=tuple(args.faults.split(",")),
+            independent_expected=args.independent_expected,
+            acknowledge_code_execution=args.acknowledge_project_code_execution,
+            timeout=args.timeout)
+        write_external_report(report,args.out)
+        print(json.dumps({
+            "project":report["project"],
+            "actual_engine":report["engine"],
+            "independent_gold_supplied":report["independent_gold_supplied"],
+            "cases":[{"fault":c["fault"],"outcome":c["outcome"]}
+                     for c in report["cases"]],
+            "evidence_path":str(args.out),
+        },indent=2,sort_keys=True))
+        return (2 if args.fail_on_silent and
+                report["silent_business_mismatches"] else 0)
     if args.command=="assess-demo":
         from .resilience_assessment import run_assessment, write_assessment
         report=run_assessment(args.seed)
