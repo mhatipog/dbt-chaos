@@ -1,0 +1,55 @@
+name: Source-lineage targeted release gate
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/contract_publication.py'
+      - 'dbt_chaos/contract_agent.py'
+      - 'tests/test_contract_publication.py'
+      - '.github/workflows/contract-publication.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-lineage-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  independent-lineage-and-publication:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --disable-pip-version-check -e .
+      - name: Run immutable-event truth, real SQL detector and safe-release tests
+        run: |
+          python -m compileall -q dbt_chaos
+          python -m unittest discover -s tests -p test_contract_publication.py -v
+          python -m unittest discover -s tests -p test_contract_agent.py -v
+      - name: Execute 6 scripted tickets on two domains with targeted holds
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from dbt_chaos.contract_agent import ScriptedCalibration,run_experiment,summarize
+          for name in ("procurement","grants"):
+              c=json.loads((Path("contracts")/(name+".json")).read_text())
+              report=run_experiment(contract=c,worker=ScriptedCalibration(),seed=20261119)
+              s=summarize(report)
+              assert s['material_business_errors']==4
+              assert s['policy_results']['raw']['cases_with_wrong_publication']==4
+              assert s['policy_results']['evidence_gate']['cases_with_wrong_publication']==0
+              assert s['policy_results']['targeted_hold']['cases_with_all_held']==1
+              assert s['policy_results']['targeted_hold']['cases_with_wrong_publication']>0
+              assert all(d['policies']['targeted_hold']['physical_source_quarantines']==0
+                         for d in report['decisions'])
+              print(name, json.dumps(s['policy_results'],indent=2))
+          PY
