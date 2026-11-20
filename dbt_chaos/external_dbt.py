@@ -617,9 +617,11 @@ def run_external_campaign(
         else:
             outcome = "unchanged_business_output"
         if metadata["fault"] == "reorder_rows":
-            if item["test_verdict"] == "test_detected":
+            if not difference["equal"]:
+                outcome = "benign_control_changed_business_output"
+            elif item["test_verdict"] == "test_detected":
                 outcome = "benign_control_false_alarm"
-            elif item["test_verdict"] == "tests_passed" and difference["equal"]:
+            elif item["test_verdict"] == "tests_passed":
                 outcome = "benign_control_passed"
             else:
                 outcome = "benign_control_inconclusive"
