@@ -1,0 +1,101 @@
+name: Contract-aware agents and source-truth evidence gates
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/contract_agent.py'
+      - 'dbt_chaos/contract_sql.py'
+      - 'tests/test_contract_agent.py'
+      - '.github/workflows/contract-agent.yml'
+  pull_request:
+    paths:
+      - 'dbt_chaos/contract_agent.py'
+      - 'dbt_chaos/contract_sql.py'
+      - 'tests/test_contract_agent.py'
+      - '.github/workflows/contract-agent.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contract-agent-calibration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matched-source-and-guard-controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install no-LLM, no-dbt engine
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Compile and test all frozen counterfactual controls
+        run: |
+          python -m compileall -q dbt_chaos
+          python -m unittest discover -s tests -p test_contract_agent.py -v
+      - name: Re-run generated SQL probes and independent process oracle tests
+        run: |
+          python -m unittest discover -s tests -p test_contract_sql.py -v
+          python -m unittest discover -s tests -p test_process_contract.py -v
+      - name: Demonstrate scripted calibration in both domains
+        run: |
+          python -m dbt_chaos.contract_agent --agent scripted \
+            --contract contracts/procurement.json --seed 20261119 --steps 6 \
+            --public-dir /tmp/contract-agent-procurement-public \
+            --private-dir /tmp/contract-agent-procurement-private \
+            > /tmp/contract-agent-procurement-summary.json
+          python -m dbt_chaos.contract_agent --agent scripted \
+            --contract contracts/grants.json --seed 20261119 --steps 6 \
+            --public-dir /tmp/contract-agent-grants-public \
+            --private-dir /tmp/contract-agent-grants-private \
+            > /tmp/contract-agent-grants-summary.json
+      - name: Do not misreport scripted agent as a genuine model
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for name in ('procurement','grants'):
+              base=Path('/tmp/contract-agent-'+name+'-')
+              summary=json.loads(Path(str(base)+'summary.json').read_text())
+              report=json.loads((Path(str(base)+'private')/'assessment.json').read_text())
+              assert summary['worker']=='scripted_plausible_mistakes_not_llm'
+              assert not report['methodology']['genuine_weak_llm']
+              assert summary['steps']==6
+              assert summary['material_business_errors']==4
+              assert summary['policy_results']['raw']['cases_with_wrong_publication']==4
+              assert summary['policy_results']['monitor']['cases_with_wrong_publication']==4
+              assert summary['policy_results']['block_on_detection']['cases_with_all_held']==1
+              assert summary['policy_results']['evidence_gate']['cases_with_wrong_publication']==0
+              assert summary['policy_results']['attested_gate']['cases_with_wrong_publication']==0
+              assert summary['policy_results']['evidence_gate']['total_correct_value_fraction']==1
+              assert not (Path(str(base)+'public')/'business_gold.json').exists()
+              print(name, '6 controlled tickets, 4 genuine money errors,',
+                    'source-only prevention without false recovery claims')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: process-contract-agent-public-calibration
+          path: |
+            /tmp/contract-agent-procurement-public/
+            /tmp/contract-agent-grants-public/
+          retention-days: 2
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: process-contract-agent-private-calibration
+          path: |
+            /tmp/contract-agent-procurement-private/
+            /tmp/contract-agent-grants-private/
+            /tmp/contract-agent-procurement-summary.json
+            /tmp/contract-agent-grants-summary.json
+          retention-days: 2
+          if-no-files-found: warn
