@@ -120,7 +120,56 @@ def main(argv=None):
     cs.add_argument("--alerts-json",type=Path)
     cs.add_argument("--out",type=Path,required=True)
     cs.add_argument("--fail-on-silent",action="store_true")
+    ca=cmd.add_parser("contract-agent",help="Replay good-faith maintenance proposals through independent SQL and safety policies")
+    ca.add_argument("--contract",type=Path,required=True)
+    ca.add_argument("--agent",choices=("scripted","cautious","llama"),default="cautious")
+    ca.add_argument("--model",type=Path)
+    ca.add_argument("--seed",type=int,default=20261119)
+    ca.add_argument("--steps",type=int,default=6)
+    ca.add_argument("--public-dir",type=Path,required=True)
+    ca.add_argument("--private-dir",type=Path,required=True)
+    ca.add_argument("--out",type=Path)
+    cv=cmd.add_parser("contract-review",help="Balanced approve/keep/escalate decisions over harmful and beneficial edits")
+    cv.add_argument("--contract",type=Path,required=True)
+    cv.add_argument("--agent",choices=("always_apply","always_keep","llama"),
+                    default="always_keep")
+    cv.add_argument("--model",type=Path)
+    cv.add_argument("--seed",type=int,default=20261119)
+    cv.add_argument("--public-dir",type=Path,required=True)
+    cv.add_argument("--private-dir",type=Path,required=True)
+    cv.add_argument("--out",type=Path)
     args=parser.parse_args(argv)
+    if args.command in ("contract-agent","contract-review"):
+        from .process_contract import validate_contract
+        contract_data=validate_contract(json.loads(args.contract.read_text(encoding="utf8")))
+        if args.agent=="llama" and args.model is None:
+            parser.error("--agent llama requires --model PATH_TO_GGUF")
+        if args.command=="contract-agent":
+            from .contract_agent import (
+                LocalContractWorker,CautiousControl,ScriptedCalibration,
+                run_experiment,summarize)
+            worker=(LocalContractWorker(args.model,args.seed) if args.agent=="llama"
+                    else ScriptedCalibration() if args.agent=="scripted"
+                    else CautiousControl())
+            data=run_experiment(contract=contract_data,worker=worker,seed=args.seed,
+                                steps=args.steps,public_dir=args.public_dir,
+                                private_dir=args.private_dir)
+        else:
+            from .contract_review import (
+                LocalLLMReviewer,AlwaysApplyReviewer,AlwaysKeepReviewer,
+                run_review_experiment,summarize)
+            worker=(LocalLLMReviewer(args.model,args.seed) if args.agent=="llama"
+                    else AlwaysApplyReviewer() if args.agent=="always_apply"
+                    else AlwaysKeepReviewer())
+            data=run_review_experiment(contract=contract_data,reviewer=worker,
+                                       seed=args.seed,public_dir=args.public_dir,
+                                       private_dir=args.private_dir)
+        result=summarize(data)
+        if args.out:
+            args.out.parent.mkdir(parents=True,exist_ok=True)
+            args.out.write_text(json.dumps(result,indent=2,sort_keys=True)+"\n",encoding="utf8")
+        print(json.dumps(result,indent=2,sort_keys=True))
+        return 0
     if args.command in ("contract-generate","contract-reference","contract-score","contract-probe"):
         from .process_contract import (
             export_contract_challenge,run_reference_from_public,
