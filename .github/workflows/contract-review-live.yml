@@ -1,0 +1,141 @@
+name: Genuine balanced maintenance reviewers (real open-weight LLMs)
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - '.github/workflows/contract-review-live.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dbt-chaos-real-balanced-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  model-review-of-six-frozen-maintenance-actions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 28
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - family: qwen05
+            seed: 20261119
+            model_repo: Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF
+            model_file: qwen2.5-coder-0.5b-instruct-q4_k_m.gguf
+          - family: qwen15
+            seed: 20261119
+            model_repo: Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF
+            model_file: qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+          - family: qwen15
+            seed: 20261120
+            model_repo: Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF
+            model_file: qwen2.5-coder-1.5b-instruct-q4_k_m.gguf
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install local model inference, no remote API or production access
+        run: |
+          python -m pip install --disable-pip-version-check -e . \
+            'llama-cpp-python>=0.3,<0.4' 'huggingface_hub>=0.26,<2'
+      - name: Obtain official freely available quantized GGUF weights
+        run: |
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          p=hf_hub_download(
+              repo_id='${{ matrix.model_repo }}',
+              filename='${{ matrix.model_file }}',
+              local_dir='/tmp/balanced-weights')
+          print('Downloaded local CPU model:',p)
+          PY
+      - name: Actual model review of harmful edits, harmless retries and verified repair
+        run: |
+          mkdir -p /tmp/review-live
+          for domain in procurement grants; do
+            python -m dbt_chaos.contract_review \
+              --agent llama \
+              --model "/tmp/balanced-weights/${{ matrix.model_file }}" \
+              --contract "contracts/${domain}.json" \
+              --seed "${{ matrix.seed }}" \
+              --public-dir "/tmp/review-live/${domain}-public" \
+              --private-dir "/tmp/review-live/${domain}-private" \
+              > "/tmp/review-live/${domain}-summary.json"
+          done
+      - name: Audit genuine model decisions and both counterfactual policy tiers
+        run: |
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('/tmp/review-live')
+          all_summaries=[]
+          for domain in ('procurement','grants'):
+              pub=root/(domain+'-public')
+              pri=root/(domain+'-private')
+              s=json.loads((root/(domain+'-summary.json')).read_text())
+              r=json.loads((pri/'assessment.json').read_text())
+              m=json.loads((pub/'manifest.json').read_text())
+              assert r['review_decisions_generated_by_llm'] is True
+              assert r['candidate_proposals_authored_by_llm'] is False
+              assert r['process_event_ledger_hidden_from_reviewer']
+              assert r['six_independent_matched_source_states']
+              assert s['total_review_cases']==6
+              assert len(s['model_sha256'])==64
+              assert len(r['cases'])==6
+              assert set(s['case_evidence_categories'].values())=={
+                  'harmful','beneficial_repair','beneficial_idempotent'}
+              assert s['policy_results']['always_keep_publication']['wrong_case_count']==1
+              assert s['policy_results']['always_apply_publication']['wrong_case_count']==3
+              assert not (pub/'process_events.jsonl').exists()
+              assert not (pub/'assessment.json').exists()
+              assert (pri/'process_events.jsonl').exists()
+              for filename,digest in m['files'].items():
+                  assert hashlib.sha256((pub/filename).read_bytes()).hexdigest()==digest
+              for item in r['cases']:
+                  a=item['selected_gate_results']
+                  assert set(a)=={'source_only','attested'}
+                  assert item['candidate_outcome_class'] in (
+                      'harmful','beneficial_repair','beneficial_idempotent')
+                  assert a['attested']['actual_business_publication'][
+                      'false_published_l1_cents'] <= a['source_only'][
+                      'actual_business_publication']['false_published_l1_cents']
+                  assert item['model_decision']['decision'] in (
+                      'apply','keep','escalate')
+              all_summaries.append(s)
+              print(domain,'valid',s['parsed_model_decisions'],
+                    'model applied',s['approved_candidates'],
+                    'semantically correct choices',s['correct_business_decisions'])
+          assert all_summaries[0]['model_sha256']==all_summaries[1]['model_sha256']
+          (root/'combined-summary.json').write_text(json.dumps({
+              'model_family':'${{ matrix.family }}','seed':${{ matrix.seed }},
+              'domains':all_summaries,
+          },indent=2))
+          print('PASS: 12 real model-reviewed candidate decisions;'
+                ' no model-authored fault claims; same candidates across policies')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: balanced-review-${{ matrix.family }}-seed-${{ matrix.seed }}-public
+          path: |
+            /tmp/review-live/procurement-public/
+            /tmp/review-live/grants-public/
+          retention-days: 2
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: balanced-review-${{ matrix.family }}-seed-${{ matrix.seed }}-assessment
+          path: |
+            /tmp/review-live/procurement-private/
+            /tmp/review-live/grants-private/
+            /tmp/review-live/combined-summary.json
+          retention-days: 2
+          if-no-files-found: warn
