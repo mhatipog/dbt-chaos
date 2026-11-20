@@ -24,8 +24,8 @@ import subprocess
 import tempfile
 from typing import Any
 
-FORMAT = "dbt_chaos_external_seed_campaign_v1"
-FAULTS = ("amount_shift", "duplicate_row", "drop_row")
+FORMAT = "dbt_chaos_external_seed_campaign_v2"
+FAULTS = ("amount_shift", "duplicate_row", "drop_row", "reorder_rows")
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SKIP_DIRS = {
     ".git", ".github", ".venv", "venv", "target", "logs", "dbt_packages",
@@ -101,9 +101,14 @@ def _inventory(root: Path) -> dict:
                 raise ExternalProjectError("project exceeds bounded file/size limit")
     if Path("dbt_project.yml") not in files:
         raise ExternalProjectError("project config missing from allowed inventory")
+    fingerprint = sha256()
+    for relative in sorted(files):
+        fingerprint.update(relative.as_posix().encode("utf8") + b"\\0")
+        fingerprint.update(sha256((root / relative).read_bytes()).digest())
     return {
         "name": name, "profile": profile, "root": root,
         "files": sorted(files), "total_bytes": size,
+        "project_scope_sha256": fingerprint.hexdigest(),
     }
 
 
@@ -163,6 +168,7 @@ def inspect_external_project(project_dir: Path) -> dict:
         "schema_only_no_row_values_exposed": True,
         "dbt_or_macro_code_executed": False,
         "files_in_allowed_scope": len(info["files"]),
+        "project_scope_sha256": info["project_scope_sha256"],
         "model_file_names_not_compiled_dag": models,
         "seeds": seeds,
         "note": "Inspect and review target code; a matching seed is not "
@@ -224,8 +230,12 @@ def build_mutation(
         changed[index][column] = str(value - delta)
     elif fault == "duplicate_row":
         changed.insert(index + 1, dict(changed[index]))
-    else:
+    elif fault == "drop_row":
         changed.pop(index)
+    elif fault == "reorder_rows":
+        if len(changed) < 2:
+            raise ExternalProjectError("reorder_rows needs at least two records")
+        changed.reverse()  # deliberately benign multiset-preserving control
     result = io.StringIO(newline="")
     writer = csv.DictWriter(result, fieldnames=columns, lineterminator="\n")
     writer.writeheader()
@@ -267,7 +277,7 @@ def _safe_environment(temp_home: Path) -> dict[str, str]:
 
 def _run_dbt(
     cmd: str, project: Path, profiles: Path, home: Path,
-    *, model: str, timeout: int,
+    *, model: str, timeout: int, test_scope: str = "full",
 ) -> dict:
     binary = shutil.which("dbt")
     if binary is None:
@@ -281,7 +291,7 @@ def _run_dbt(
     ]
     if cmd == "seed":
         args += ["--full-refresh"]
-    if cmd in ("run", "test"):
+    if cmd in ("run", "test") and test_scope == "selected":
         args += ["--select", "+" + model]
     if cmd == "run":
         args += ["--full-refresh"]
@@ -296,6 +306,7 @@ def _run_dbt(
                 "test_statuses": {}, "tests_executed": 0}
     statuses = Counter()
     failed_tests = []
+    executed_test_ids = []
     results = project / "target" / "run_results.json"
     # dbt rewrites this artifact after each command.
     if results.is_file():
@@ -303,6 +314,8 @@ def _run_dbt(
             data = json.loads(results.read_text(encoding="utf8"))
             for item in data.get("results", []):
                 status = str(item.get("status", "unknown")).lower()
+                if cmd == "test":
+                    executed_test_ids.append(str(item.get("unique_id", "")))
                 statuses[status] += 1
                 if (cmd == "test" and status in ("fail", "warn", "error")
                         and len(failed_tests) < 100):
@@ -316,6 +329,7 @@ def _run_dbt(
         "returncode": proc.returncode,
         "test_statuses": dict(sorted(statuses.items())),
         "failed_test_ids": failed_tests,
+        "executed_test_ids": executed_test_ids if cmd == "test" else [],
         "tests_executed": sum(statuses.values()) if cmd == "test" else 0,
     }
     # Deliberately opt-in diagnostic for synthetic CI only. dbt stdout can
@@ -352,11 +366,13 @@ def _table_snapshot(database: Path, manifest: Path, model: str) -> dict:
         rows = cursor.fetchmany(MAX_ROWS + 1)
         if len(rows) > MAX_ROWS:
             raise ExternalProjectError("model output exceeds bounded comparison limit")
-        result = [tuple("" if v is None else str(v) for v in row)
+        # Keep SQL NULL distinct from the empty string. Conflating them
+        # makes an empty-vs-missing-data regression look benign.
+        result = [tuple(None if v is None else str(v) for v in row)
                   for row in rows]
     return {
         "columns": columns,
-        "rows": sorted(result),
+        "rows": sorted(result, key=repr),
         "row_count": len(result),
         "node_id": node.get("unique_id"),
     }
@@ -390,6 +406,104 @@ def _trusted_expected(path: Path, columns: list[str]) -> dict:
     }
 
 
+
+
+def _public_mutation(metadata: dict) -> dict:
+    """Provide replay evidence without leaking row IDs or raw input amounts."""
+    return {
+        "fault": metadata["fault"],
+        "selected_row_sha256": sha256(
+            metadata["selected_row"].encode("utf8")).hexdigest(),
+        "source_row_identifier_redacted": True,
+        "input_cell_values_redacted": True,
+        "target_column": metadata["target_column"],
+        "input_rows_before": metadata["input_rows_before"],
+        "input_rows_after": metadata["input_rows_after"],
+        "mutated_csv_sha256": metadata["mutated_csv_sha256"],
+    }
+
+
+def _numeric_impact(gold: dict | None, observed: dict,
+                    metric_column: str | None,
+                    business_key: str | None = None) -> dict | None:
+    """Measure both net and per-key gross error without exposing business keys."""
+    if metric_column is None or gold is None:
+        return None
+    if gold["columns"] != observed["columns"]:
+        raise ExternalProjectError("numeric comparison requires aligned columns")
+    if metric_column not in gold["columns"]:
+        raise ExternalProjectError("metric column missing from reference output")
+    if business_key is not None and business_key not in gold["columns"]:
+        raise ExternalProjectError("business key missing from reference output")
+    metric_index = gold["columns"].index(metric_column)
+
+    def value(row: tuple) -> Decimal:
+        entry = row[metric_index]
+        if entry is None:
+            raise ExternalProjectError(
+                "numeric metric has NULL, cannot score financial impact")
+        try:
+            amount = Decimal(entry)
+        except (InvalidOperation, TypeError, ValueError) as exc:
+            raise ExternalProjectError(
+                "metric values must all be finite numeric text") from exc
+        if not amount.is_finite():
+            raise ExternalProjectError("numeric metric contains nonfinite value")
+        return amount
+
+    expected = sum((value(r) for r in gold["rows"]), Decimal(0))
+    actual = sum((value(r) for r in observed["rows"]), Decimal(0))
+    signed = actual - expected
+    result = {
+        "metric_column": metric_column,
+        "metric_unit": "as_declared_by_caller_not_inferred",
+        "expected_total": str(expected),
+        "actual_total": str(actual),
+        "signed_error": str(signed),
+        "absolute_error": str(abs(signed)),
+        "business_key_column": business_key,
+        "gross_absolute_error": None,
+        "affected_business_key_count": None,
+        "missing_business_key_count": None,
+        "unexpected_business_key_count": None,
+        "net_error_masks_offsetting_errors": None,
+    }
+    if business_key is None:
+        return result
+
+    index = gold["columns"].index(business_key)
+
+    def aggregate(rows: list) -> dict[str, Decimal]:
+        sums: dict[str, Decimal] = {}
+        for row in rows:
+            key = row[index]
+            if key is None or key == "":
+                raise ExternalProjectError(
+                    "empty/null business key makes per-key impact unverifiable")
+            sums[key] = sums.get(key, Decimal(0)) + value(row)
+        return sums
+
+    truth = aggregate(gold["rows"])
+    published = aggregate(observed["rows"])
+    keys = set(truth) | set(published)
+    differences = {
+        key: published.get(key, Decimal(0)) - truth.get(key, Decimal(0))
+        for key in keys
+    }
+    gross = sum((abs(v) for v in differences.values()), Decimal(0))
+    result.update({
+        "gross_absolute_error": str(gross),
+        "affected_business_key_count": sum(
+            mismatch != 0 for mismatch in differences.values()),
+        "missing_business_key_count": len(set(truth) - set(published)),
+        "unexpected_business_key_count": len(set(published) - set(truth)),
+        "net_error_masks_offsetting_errors": gross > abs(signed),
+        "reference_business_key_count": len(truth),
+        "observed_business_key_count": len(published),
+    })
+    return result
+
+
 def _copy_project(info: dict, dest: Path) -> Path:
     project = dest / "project"
     for relative in info["files"]:
@@ -400,7 +514,7 @@ def _copy_project(info: dict, dest: Path) -> Path:
 
 
 def _trial(info: dict, *, mutation: bytes | None, source_file: Path,
-           model: str, timeout: int) -> dict:
+           model: str, timeout: int, test_scope: str = "full") -> dict:
     with tempfile.TemporaryDirectory(prefix="dbt-chaos-external-") as temp:
         root = Path(temp)
         project = _copy_project(info, root)
@@ -414,16 +528,31 @@ def _trial(info: dict, *, mutation: bytes | None, source_file: Path,
         stages = {}
         for name in ("seed", "run"):
             stage = _run_dbt(name, project, profiles, root, model=model,
-                             timeout=timeout)
+                             timeout=timeout, test_scope=test_scope)
             stages[name] = stage
             if stage["status"] != "ok":
                 return {"execution": "failed_before_publication",
                         "failed_stage": name, "stages": stages}
         snapshot = _table_snapshot(
             warehouse, project / "target" / "manifest.json", model)
+        manifest_data = json.loads(
+            (project / "target" / "manifest.json").read_text(encoding="utf8"))
+        available_tests = {
+            uid for uid, node in manifest_data.get("nodes", {}).items()
+            if node.get("resource_type") == "test"
+        }
         stages["test"] = _run_dbt(
-            "test", project, profiles, root, model=model, timeout=timeout)
+            "test", project, profiles, root, model=model, timeout=timeout,
+            test_scope=test_scope)
         test = stages["test"]
+        executed = set(test.get("executed_test_ids", []))
+        test["test_scope"] = test_scope
+        test["manifest_test_count"] = len(available_tests)
+        test["unexecuted_manifest_test_count"] = len(available_tests - executed)
+        test["tests_coverage_complete"] = (
+            test_scope == "full" and bool(available_tests)
+            and available_tests == executed
+        )
         statuses = test["test_statuses"]
         if test["status"] == "timeout":
             verdict = "test_timeout"
@@ -432,10 +561,16 @@ def _trial(info: dict, *, mutation: bytes | None, source_file: Path,
             verdict = "test_error"
         elif any(k in statuses for k in ("fail", "warn")):
             verdict = "test_detected"
+        elif statuses.get("skipped", 0) or statuses.get("skip", 0):
+            verdict = "test_incomplete"
         elif test["status"] != "ok":
             verdict = "test_error"
         elif not test["tests_executed"]:
             verdict = "no_tests_executed"
+        elif test_scope == "full" and not test["tests_coverage_complete"]:
+            verdict = "test_incomplete"
+        elif any(k not in ("pass", "success") for k in statuses):
+            verdict = "test_incomplete"
         else:
             verdict = "tests_passed"
         return {"execution": "completed", "snapshot": snapshot,
@@ -447,6 +582,8 @@ def run_external_campaign(
     column: str, match_column: str, match_value: str, delta: int,
     faults: tuple[str, ...], independent_expected: Path | None,
     acknowledge_code_execution: bool, timeout: int = 90,
+    test_scope: str = "full", metric_column: str | None = None,
+    business_key: str | None = None,
 ) -> dict[str, Any]:
     """Run independent fresh-DB trials; never touch the user's warehouse."""
     if not acknowledge_code_execution:
@@ -456,7 +593,17 @@ def run_external_campaign(
     for label, value in (("model", model), ("seed", seed_table),
                          ("column", column), ("match column", match_column)):
         _validate_name(value, label)
-    if (type(timeout) is not int or timeout < 10 or timeout > 240
+    if business_key is not None:
+        _validate_name(business_key, "business key")
+        if metric_column is None:
+            raise ExternalProjectError("business key requires an explicit metric column")
+    if metric_column is not None:
+        _validate_name(metric_column, "metric column")
+        if independent_expected is None:
+            raise ExternalProjectError(
+                "numeric business impact requires a caller-provided independent reference")
+    if (test_scope not in ("full", "selected") or
+            type(timeout) is not int or timeout < 10 or timeout > 240
             or not faults or len(set(faults)) != len(faults)
             or any(f not in FAULTS for f in faults)):
         raise ExternalProjectError("invalid timeout or fault selection")
@@ -470,7 +617,7 @@ def run_external_campaign(
         for f in faults
     ]
     clean = _trial(info, mutation=None, source_file=source_file,
-                   model=model, timeout=timeout)
+                   model=model, timeout=timeout, test_scope=test_scope)
     if clean["execution"] != "completed":
         failed = clean.get("failed_stage", "unknown")
         detail = clean.get("stages", {}).get(failed, {})
@@ -491,13 +638,14 @@ def run_external_campaign(
         raise ExternalProjectError(
             "clean baseline disagrees with supplied independent gold; "
             "must repair/reference-validate before mutation scoring")
+    baseline_metric = _numeric_impact(gold, baseline, metric_column, business_key)
     cases = []
     for mutation, metadata in trials:
         item = _trial(info, mutation=mutation, source_file=source_file,
-                      model=model, timeout=timeout)
+                      model=model, timeout=timeout, test_scope=test_scope)
         if item["execution"] != "completed":
             cases.append({
-                "fault": metadata["fault"], "mutation": metadata,
+                "fault": metadata["fault"], "mutation": _public_mutation(metadata),
                 "outcome": "execution_failed_not_a_dbt_test_detection",
                 "failed_stage": item.get("failed_stage"),
                 "stages": item["stages"],
@@ -515,23 +663,40 @@ def run_external_campaign(
             elif item["test_verdict"] == "test_detected":
                 outcome = "detected_business_mismatch"
             elif item["test_verdict"] == "tests_passed":
-                outcome = "silent_business_mismatch"
+                outcome = ("silent_business_mismatch" if test_scope == "full"
+                           else "mismatch_passed_selected_tests_only")
             else:
                 outcome = "business_mismatch_unverified_test_execution"
         else:
             outcome = "unchanged_business_output"
+        if metadata["fault"] == "reorder_rows":
+            if not difference["equal"]:
+                outcome = "benign_control_changed_business_output"
+            elif item["test_verdict"] == "test_detected":
+                outcome = "benign_control_false_alarm"
+            elif item["test_verdict"] == "tests_passed":
+                outcome = "benign_control_passed"
+            else:
+                outcome = "benign_control_inconclusive"
         suggestion = {
             "amount_shift": "Reconcile amount against independent provider/ledger events; nullability cannot verify plausible values",
             "drop_row": "Test completeness against an independent event count or immutable delivery sequence",
             "duplicate_row": "Enforce a stable business-key uniqueness invariant before aggregation",
+            "reorder_rows": "Benign ordering control: no business value or key-set change should fail quality gates",
         }[metadata["fault"]]
         cases.append({
-            "fault": metadata["fault"], "mutation": metadata,
+            "fault": metadata["fault"], "mutation": _public_mutation(metadata),
             "next_business_invariant_to_check": suggestion,
             "outcome": outcome, "difference_from_baseline": difference,
             "difference_from_independent_truth": truth,
+            "numeric_business_impact": _numeric_impact(
+                gold, item["snapshot"], metric_column, business_key),
             "test_verdict": item["test_verdict"],
             "tests_executed": item["stages"]["test"]["tests_executed"],
+            "manifest_test_count": item["stages"]["test"]["manifest_test_count"],
+            "unexecuted_manifest_test_count":
+                item["stages"]["test"]["unexecuted_manifest_test_count"],
+            "test_scope": test_scope,
             "test_statuses": item["stages"]["test"]["test_statuses"],
             "failed_test_ids": item["stages"]["test"].get("failed_test_ids", []),
             "output_rows": item["snapshot"]["row_count"],
@@ -543,8 +708,28 @@ def run_external_campaign(
         "model": model, "model_node_id": baseline["node_id"],
         "seed": seed_table, "seed_path": source_file.as_posix(),
         "original_files": len(info["files"]),
+        "project_scope_sha256": info["project_scope_sha256"],
+        "original_seed_sha256": sha256(source.read_bytes()).hexdigest(),
+        "independent_reference_sha256": (
+            sha256(independent_expected.read_bytes()).hexdigest()
+            if independent_expected is not None else None),
         "clean_baseline_test_verdict": clean["test_verdict"],
+        "test_scope": test_scope,
+        "test_scope_description": (
+            "Full dbt run and test across the project" if test_scope == "full"
+            else "Only the target model and its upstream dbt graph; "
+                 "downstream and unrelated tests may not have been executed"
+        ),
+        "baseline_manifest_test_count":
+            clean["stages"]["test"]["manifest_test_count"],
+        "baseline_tests_executed":
+            clean["stages"]["test"]["tests_executed"],
+        "baseline_test_coverage_complete":
+            clean["stages"]["test"]["tests_coverage_complete"],
         "baseline_rows": baseline["row_count"],
+        "metric_column": metric_column,
+        "business_key": business_key,
+        "baseline_numeric_business_impact": baseline_metric,
         "independent_gold_supplied": gold is not None,
         "external_gold_provenance_cryptographically_verified": False,
         "gold_provenance_assumption": (
@@ -560,6 +745,9 @@ def run_external_campaign(
         "cases": cases,
         "silent_business_mismatches": sum(
             c["outcome"] == "silent_business_mismatch" for c in cases),
+        "benign_controls_run": sum(c["fault"] == "reorder_rows" for c in cases),
+        "benign_false_alarms": sum(
+            c["outcome"] == "benign_control_false_alarm" for c in cases),
         "caution": (
             "Without caller-supplied independent gold, output drift is not "
             "evidence of incorrect business data. dbt test coverage is not "

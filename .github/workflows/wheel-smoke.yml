@@ -1,0 +1,75 @@
+name: Wheel install and external project onboarding smoke test
+
+on:
+  push:
+    branches: [feature/resilience-evidence-v3-20261120]
+    paths:
+      - 'pyproject.toml'
+      - 'dbt_chaos/**'
+      - '.github/workflows/wheel-smoke.yml'
+      - 'tests/fixtures/foreign_dbt_project/**'
+  pull_request:
+    branches: [main, 'feature/**', 'research/**']
+    paths:
+      - 'pyproject.toml'
+      - 'dbt_chaos/**'
+      - '.github/workflows/wheel-smoke.yml'
+      - 'tests/fixtures/foreign_dbt_project/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheel-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build wheel from source
+        run: |
+          python -m pip install --disable-pip-version-check build
+          python -m build --wheel
+          ls -l dist/*.whl
+      - name: Install wheel into a fresh isolated Python environment
+        run: |
+          python -m venv /tmp/dbt-chaos-wheel-env
+          /tmp/dbt-chaos-wheel-env/bin/python -m pip install --disable-pip-version-check dist/*.whl
+      - name: Run installed wheel outside checked-out repository
+        run: |
+          ROOT_DIR="$(pwd)"
+          cd /tmp
+          /tmp/dbt-chaos-wheel-env/bin/dbt-chaos --help
+          /tmp/dbt-chaos-wheel-env/bin/dbt-chaos external-dbt-inspect \
+            --project-dir "$ROOT_DIR/tests/fixtures/foreign_dbt_project" \
+            --out /tmp/installed-wheel-inspection.json
+          /tmp/dbt-chaos-wheel-env/bin/dbt-chaos assess-demo \
+            --seed 20261119 --out-dir /tmp/installed-wheel-assessment \
+            --fail-on-unsafe
+          (cd /tmp/installed-wheel-assessment && sha256sum -c SHA256SUMS)
+          /tmp/dbt-chaos-wheel-env/bin/python - <<'PY'
+          import dbt_chaos, json
+          from pathlib import Path
+          from importlib.metadata import version
+          pkg = Path(dbt_chaos.__file__).resolve()
+          assert "/tmp/dbt-chaos-wheel-env/" in str(pkg), pkg
+          assert "mhatipog/dbt-chaos" not in str(pkg), pkg
+          data = json.loads(Path("/tmp/installed-wheel-inspection.json").read_text())
+          assert data["project"] == "foreign_retail", data
+          assert data["dbt_or_macro_code_executed"] is False
+          assessment = json.loads(Path("/tmp/installed-wheel-assessment/assessment.json").read_text())
+          assert assessment["controls_passed"]
+          assert assessment["domain_count"] == 2
+          assert assessment["ticket_count"] == 12
+          print("Installed version", version("dbt-chaos"), "from wheel site-packages", pkg)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dbt-chaos-validated-wheel
+          path: dist/*.whl
+          retention-days: 7

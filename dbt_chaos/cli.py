@@ -166,8 +166,14 @@ def main(argv=None):
     foreign.add_argument("--delta",type=int,default=2000)
     foreign.add_argument("--faults",default="amount_shift,duplicate_row,drop_row")
     foreign.add_argument("--independent-expected",type=Path)
+    foreign.add_argument("--metric-column",
+                         help="Numeric output column to score against independent reference")
+    foreign.add_argument("--business-key",
+                         help="Group numeric errors by this key to detect offsetting misstatements")
     foreign.add_argument("--out",type=Path,required=True)
     foreign.add_argument("--timeout",type=int,default=90)
+    foreign.add_argument("--test-scope",choices=("full","selected"),default="full",
+                         help="Full project tests by default; selected is explicitly partial")
     foreign.add_argument("--acknowledge-project-code-execution",action="store_true")
     foreign.add_argument("--fail-on-silent",action="store_true")
     args=parser.parse_args(argv)
@@ -192,12 +198,20 @@ def main(argv=None):
             faults=tuple(args.faults.split(",")),
             independent_expected=args.independent_expected,
             acknowledge_code_execution=args.acknowledge_project_code_execution,
-            timeout=args.timeout)
+            timeout=args.timeout,test_scope=args.test_scope,
+            metric_column=args.metric_column,business_key=args.business_key)
         write_external_report(report,args.out)
         print(json.dumps({
             "project":report["project"],
             "actual_engine":report["engine"],
             "independent_gold_supplied":report["independent_gold_supplied"],
+            "test_scope":report["test_scope"],
+            "baseline_tests_executed":report["baseline_tests_executed"],
+            "baseline_manifest_test_count":report["baseline_manifest_test_count"],
+            "metric_column":report["metric_column"],
+            "business_key":report["business_key"],
+            "benign_controls_run":report["benign_controls_run"],
+            "benign_false_alarms":report["benign_false_alarms"],
             "cases":[{"fault":c["fault"],"outcome":c["outcome"]}
                      for c in report["cases"]],
             "evidence_path":str(args.out),

@@ -2,7 +2,7 @@ name: External dbt project chaos — real unknown-project execution
 
 on:
   push:
-    branches: [feature/external-dbt-chaos-20261120]
+    branches: [main, 'feature/**', 'research/**']
     paths:
       - 'dbt_chaos/external_dbt.py'
       - 'dbt_chaos/cli.py'
@@ -11,7 +11,7 @@ on:
       - 'tests/fixtures/foreign_expected_gold.csv'
       - '.github/workflows/external-dbt.yml'
   pull_request:
-    branches: [feature/assessment-pack-20261120]
+    branches: [main, 'feature/**', 'research/**']
     paths:
       - 'dbt_chaos/external_dbt.py'
       - 'dbt_chaos/cli.py'
