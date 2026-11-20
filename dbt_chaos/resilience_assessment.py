@@ -305,7 +305,7 @@ def write_assessment(report: dict, out_dir: Path) -> dict:
     sums = [(sha256((out_dir / name).read_bytes()).hexdigest(), name)
             for name in names]
     (out_dir / "SHA256SUMS").write_text(
-        "".join(digest + "  " + name + "\\n" for digest, name in sums),
+        "".join(digest + "  " + name + "\n" for digest, name in sums),
         encoding="utf8")
     return {"directory": str(out_dir), "assessment_sha256": sums[0][0],
             "controls_passed": report["controls_passed"]}
