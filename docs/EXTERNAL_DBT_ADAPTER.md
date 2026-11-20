@@ -30,6 +30,17 @@ Install optional pinned dependencies:
 python -m pip install -e '.[dbt]'
 ~~~
 
+First inspect a local project's seed tables, candidate keys and
+amount columns without running SQL, macros, hooks, or showing source values:
+
+~~~bash
+dbt-chaos external-dbt-inspect \
+  --project-dir tests/fixtures/foreign_dbt_project \
+  --out /tmp/dbt-chaos-inspection.json
+~~~
+
+Names and likely-key selection are heuristics, not verified constraints.
+
 Run the internally reviewed synthetic unfamiliar project:
 
 ~~~bash
@@ -87,7 +98,10 @@ or prevent deliberate execution of hostile code.
 The supplied independent expected-output CSV must be created by a
 separately checked legitimate business process, NOT copied from the
 target model's baseline. A wrong clean baseline is rejected before any
-fault outcomes are called silent corruption.
+fault outcomes are called silent corruption. The adapter cannot prove
+that the caller's reference truly comes from an independent source or
+cryptographically authenticate its origin; the JSON report explicitly
+records this trust assumption.
 
 CI: .github/workflows/external-dbt.yml.
 
