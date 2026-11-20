@@ -168,6 +168,8 @@ def main(argv=None):
     foreign.add_argument("--independent-expected",type=Path)
     foreign.add_argument("--metric-column",
                          help="Numeric output column to score against independent reference")
+    foreign.add_argument("--business-key",
+                         help="Group numeric errors by this key to detect offsetting misstatements")
     foreign.add_argument("--out",type=Path,required=True)
     foreign.add_argument("--timeout",type=int,default=90)
     foreign.add_argument("--test-scope",choices=("full","selected"),default="full",
@@ -197,7 +199,7 @@ def main(argv=None):
             independent_expected=args.independent_expected,
             acknowledge_code_execution=args.acknowledge_project_code_execution,
             timeout=args.timeout,test_scope=args.test_scope,
-            metric_column=args.metric_column)
+            metric_column=args.metric_column,business_key=args.business_key)
         write_external_report(report,args.out)
         print(json.dumps({
             "project":report["project"],
@@ -207,6 +209,7 @@ def main(argv=None):
             "baseline_tests_executed":report["baseline_tests_executed"],
             "baseline_manifest_test_count":report["baseline_manifest_test_count"],
             "metric_column":report["metric_column"],
+            "business_key":report["business_key"],
             "benign_controls_run":report["benign_controls_run"],
             "benign_false_alarms":report["benign_false_alarms"],
             "cases":[{"fault":c["fault"],"outcome":c["outcome"]}
