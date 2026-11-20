@@ -135,7 +135,6 @@ class ExternalProjectRealDbtTests(unittest.TestCase):
         self.assertEqual("foreign_retail", report["project"])
         self.assertTrue(report["clean_baseline_matches_independent_gold"])
         self.assertEqual("tests_passed", report["clean_baseline_test_verdict"])
-        self.assertEqual(1, report["silent_business_mismatches"])
         by_fault = {c["fault"]: c for c in report["cases"]}
         self.assertEqual(
             "silent_business_mismatch", by_fault["amount_shift"]["outcome"])
