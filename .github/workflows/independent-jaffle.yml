@@ -111,8 +111,8 @@ jobs:
             external-dbt --project-dir /project \
             --model stg_payments --seed-table raw_payments \
             --column amount --match-column id --match-value 2 \
-            --delta 500 --faults amount_shift,duplicate_row,drop_row \
-            --test-scope full \
+            --delta 500 --faults amount_shift,duplicate_row,drop_row,reorder_rows \
+            --test-scope full --metric-column amount \
             --independent-expected /independent.csv \
             --acknowledge-project-code-execution \
             --fail-on-silent \
@@ -134,10 +134,14 @@ jobs:
           assert cases["amount_shift"]["outcome"] == "silent_business_mismatch", cases
           assert cases["duplicate_row"]["outcome"] == "detected_business_mismatch", cases
           assert cases["duplicate_row"]["failed_test_ids"]
+          assert cases["amount_shift"]["numeric_business_impact"]["signed_error"] in ("-5.0", "-5")
+          assert r["benign_controls_run"] == 1 and r["benign_false_alarms"] == 0
+          assert cases["reorder_rows"]["outcome"] == "benign_control_passed", cases
+          assert "id=2" not in json.dumps(r)
           # Missing source rows may be detected elsewhere in the FULL model suite.
           assert cases["drop_row"]["outcome"] in (
               "silent_business_mismatch", "detected_business_mismatch"), cases
-          print("VERIFIED: independent upstream source, whole test suite, source faults",
+          print("VERIFIED: independent upstream source, whole test suite, monetary error and benign control",
                 {k: v["outcome"] for k, v in cases.items()})
           PY
       - name: Preserve source and evidence hashes, not the third-party row data
