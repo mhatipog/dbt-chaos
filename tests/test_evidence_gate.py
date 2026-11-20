@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+import importlib.util
 
 from dbt_chaos.commerce import oracle
 from dbt_chaos.evidence_gate import (
@@ -169,6 +170,8 @@ class EvidenceGateUnitTests(unittest.TestCase):
         self.assertEqual(self.truth, state)
 
 
+@unittest.skipUnless(importlib.util.find_spec("duckdb") is not None,
+                     "requires optional dbt/DuckDB extra")
 class EvidenceGateRealDbtTests(unittest.TestCase):
     def test_one_command_recorded_model_mutation_is_detected_and_prevented(self):
         result = replay_recorded_refund_demo()
