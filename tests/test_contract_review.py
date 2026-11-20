@@ -146,6 +146,9 @@ class BalancedReviewerTests(unittest.TestCase):
                 public_dir=pub,private_dir=pri)
             self.assertTrue((pub/"manifest.json").exists())
             self.assertEqual(6,len(list((pub/"cases").iterdir())))
+            for case_dir in (pub/"cases").iterdir():
+                self.assertEqual(3,len(list((case_dir/"inputs"/"initial").glob("*.csv"))))
+                self.assertEqual(3,len(list((case_dir/"inputs"/"proposed").glob("*.csv"))))
             self.assertFalse((pub/"assessment.json").exists())
             self.assertFalse((pub/"process_events.jsonl").exists())
             self.assertTrue((pri/"assessment.json").exists())
