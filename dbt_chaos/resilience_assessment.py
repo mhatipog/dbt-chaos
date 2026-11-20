@@ -177,25 +177,116 @@ def render_markdown(report: dict) -> str:
 
 
 def render_html(report: dict) -> str:
-    # Static HTML only; escape all inserted text and publish no hidden ledger.
-    md = render_markdown(report)
-    # A standalone readable document without external assets or client JS.
-    # Markdown remains the canonical narrative; preserve it verbatim in pre-wrap.
-    return (
-        '<!doctype html><html lang="en"><head><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<meta http-equiv="Content-Security-Policy" '
-        'content="default-src &#39;none&#39;; style-src &#39;unsafe-inline&#39;">'
-        '<title>Business Truth Resilience — assessment</title>'
-        '<style>body{font:16px/1.65 system-ui,sans-serif;max-width:1000px;'
-        'margin:3rem auto;padding:0 1.5rem;color:#152335;background:#f8fafc}'
-        'main{background:white;border:1px solid #e4e9ef;border-radius:12px;'
-        'padding:2rem;box-shadow:0 3px 20px #1523350c}'
-        'pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}'
-        '.status{font-weight:700}</style></head><body><main>'
-        '<p class="status">Executed SQL / synthetic-only research</p><pre>'
-        + escape(md) + '</pre></main></body></html>'
+    """Render accessible, completely offline evidence tables (no JS or CDN)."""
+    e = lambda obj: escape(str(obj), quote=True)
+    out = [
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width,initial-scale=1">',
+        '<meta http-equiv="Content-Security-Policy" ',
+        'content="default-src &#39;none&#39;; style-src &#39;unsafe-inline&#39;">',
+        '<title>dbt-chaos | Business Truth Resilience</title>',
+        '<style>',
+        ':root{color-scheme:light}*{box-sizing:border-box}',
+        'body{margin:0;background:#f4f7fa;color:#1c3045;',
+        'font:15px/1.6 system-ui,-apple-system,sans-serif}',
+        'main{max-width:1080px;margin:0 auto;padding:48px 20px 70px}',
+        'h1{font-size:2rem;line-height:1.2;margin:10px 0}',
+        'h2{margin:32px 0 14px;font-size:1.25rem}',
+        '.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.1em;',
+        'font-weight:700;color:#50748e}',
+        '.muted{color:#597087}.intro{max-width:850px}',
+        '.card{background:white;border:1px solid #dce5ee;border-radius:12px;',
+        'padding:20px;margin:14px 0;box-shadow:0 3px 16px #233e5007}',
+        '.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px}',
+        '.fact strong{font-size:1.75rem;display:block}',
+        '.fact span{font-size:12px;color:#597087}',
+        'table{width:100%;border-collapse:collapse;text-align:left;font-variant-numeric:tabular-nums}',
+        'th,td{padding:10px 12px;border-bottom:1px solid #e6edf3;vertical-align:top}',
+        'th{font-size:12px;color:#54728b;background:#f5f8fa;white-space:normal}',
+        '.scroll{overflow-x:auto}.ok{color:#167352;font-weight:700}',
+        '.alert{color:#a34627;font-weight:700}',
+        '.pill{display:inline-block;border:1px solid #c5d7e1;',
+        'border-radius:50px;padding:1px 10px;font-size:12px}',
+        'ul{padding-left:22px}li{margin:4px 0}',
+        '@media(max-width:700px){main{padding:25px 10px}',
+        '.card{padding:14px}th,td{padding:8px;font-size:12px}}',
+        '</style></head><body><main>',
+        '<div class="eyebrow">dbt-chaos / synthetic research</div>',
+        '<h1>Business Truth Resilience</h1>',
+        '<p class="intro">Executed reference SQL assessed against an independent ',
+        'synthetic process-event oracle. This is not a test of a connected ',
+        'production warehouse, and policy comparisons are not incident rates.</p>',
+        '<div class="facts">',
+        '<div class="card fact"><strong>', e(report["domain_count"]),
+        '</strong><span>Process contracts</span></div>',
+        '<div class="card fact"><strong>', e(report["ticket_count"]),
+        '</strong><span>Matched maintenance cases</span></div>',
+        '<div class="card fact"><strong>',
+        ('Passed' if report["controls_passed"] else 'FAILED'),
+        '</strong><span>Calibrated safety controls</span></div>',
+        '</div>',
+    ]
+    names = (
+        ("always_apply", "Always apply"),
+        ("always_keep", "Always keep"),
+        ("source_only_gate", "Source-only gate"),
+        ("attested_upper_bound", "Event-attested upper bound"),
+        ("scoped_provider_receipt", "Scoped simulated receipt"),
     )
+    for domain in report["domains"]:
+        out.extend([
+            '<section class="card"><div class="eyebrow">Domain</div><h2>',
+            e(domain["domain"]), '</h2>',
+            '<p class="muted">Six selected, individually reset synthetic ',
+            'scenarios. Incorrect-case counts are not population estimates.</p>',
+            '<div class="scroll"><table><thead><tr><th>Policy</th>',
+            '<th>Incorrect cases</th><th>Absolute business error (EUR)</th>',
+            '</tr></thead><tbody>',
+        ])
+        for key, label in names:
+            p = domain["policies"][key]
+            wrong = p["wrong_case_count"]
+            out.extend([
+                '<tr><td>', e(label), '</td><td class="',
+                ('alert' if wrong else 'ok'), '">', e(wrong),
+                ' / ', e(domain["ticket_count"]), '</td><td>',
+                e(f'{p["wrong_l1_cents"] / 100:.2f}'), '</td></tr>',
+            ])
+        out.extend([
+            '</tbody></table></div><h2>Actual publication lifecycle</h2>',
+            '<div class="scroll"><table><thead><tr>',
+            '<th>Stage</th><th>Published error</th><th>Held groups</th>',
+            '<th>Correct value delivered</th></tr></thead><tbody>',
+        ])
+        for step in domain["correction_lifecycle"]:
+            out.extend([
+                '<tr><td>', e(step["stage"].replace("_", " ")),
+                '</td><td>€', e(f'{step["wrong_published_cents"] / 100:.2f}'),
+                '</td><td>', e(step["held_reporting_groups"]),
+                '</td><td>', e(f'{step["correct_value_fraction"] * 100:.2f}%'),
+                '</td></tr>',
+            ])
+        out.extend([
+            '</tbody></table></div><h2>Safety-control assertions</h2><ul>',
+        ])
+        for key, okay in domain["controls"].items():
+            out.extend([
+                '<li><span class="', ('ok' if okay else 'alert'), '">',
+                ('PASS ' if okay else 'FAIL '), '</span>',
+                e(key.replace("_", " ")), '</li>',
+            ])
+        out.append('</ul></section>')
+    out.extend([
+        '<section class="card"><h2>Interpretation limits</h2><ul>',
+    ])
+    out.extend('<li>' + e(item) + '</li>' for item in report["limitations"])
+    out.extend([
+        '</ul><p class="muted">No private process ledger, cryptographic key, ',
+        'customer records, or simulated raw provider receipt is embedded in ',
+        'this report. SHA256SUMS verifies artifact integrity, not third-party ',
+        'provenance.</p></section></main></body></html>',
+    ])
+    return "".join(out)
 
 
 def write_assessment(report: dict, out_dir: Path) -> dict:
@@ -210,10 +301,13 @@ def write_assessment(report: dict, out_dir: Path) -> dict:
         render_markdown(report), encoding="utf8")
     (out_dir / "assessment.html").write_text(
         render_html(report), encoding="utf8")
-    digest = sha256(payload.encode("utf8")).hexdigest()
+    names = ("assessment.json", "assessment.md", "assessment.html")
+    sums = [(sha256((out_dir / name).read_bytes()).hexdigest(), name)
+            for name in names]
     (out_dir / "SHA256SUMS").write_text(
-        digest + "  assessment.json\n", encoding="utf8")
-    return {"directory": str(out_dir), "assessment_sha256": digest,
+        "".join(digest + "  " + name + "\\n" for digest, name in sums),
+        encoding="utf8")
+    return {"directory": str(out_dir), "assessment_sha256": sums[0][0],
             "controls_passed": report["controls_passed"]}
 
 
