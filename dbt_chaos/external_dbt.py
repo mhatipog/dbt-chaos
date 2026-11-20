@@ -107,6 +107,68 @@ def _inventory(root: Path) -> dict:
     }
 
 
+
+def inspect_external_project(project_dir: Path) -> dict:
+    """Side-effect-free seed inventory; never expose source row values or run dbt.
+
+    SQL filenames are heuristics, not compiled lineage. Execution still
+    requires an explicit reviewed, credential-free and isolated environment.
+    """
+    info = _inventory(project_dir)
+    seeds = []
+    for file in info["files"]:
+        if file.suffix.lower() != ".csv":
+            continue
+        try:
+            columns, rows = _read_csv(info["root"] / file)
+        except (ExternalProjectError, OSError, UnicodeError) as exc:
+            seeds.append({
+                "seed": file.stem, "relative_path": file.as_posix(),
+                "supported_for_bounded_mutation": False,
+                "reason": type(exc).__name__,
+            })
+            continue
+        keys = [
+            field for field in columns
+            if (field.lower() == "id" or field.lower().endswith("_id")
+                or field.lower().endswith("_key"))
+            and all(r[field] for r in rows)
+            and len({r[field] for r in rows}) == len(rows)
+        ]
+        numeric = [
+            field for field in columns
+            if any(tag in field.lower() for tag in
+                   ("amount", "price", "cost", "total", "value", "refund"))
+            and any(re.fullmatch(r"[0-9]+", r[field]) and int(r[field]) > 1
+                    for r in rows)
+        ]
+        seeds.append({
+            "seed": file.stem, "relative_path": file.as_posix(),
+            "row_count": len(rows), "columns": columns,
+            "candidate_row_keys": keys,
+            "candidate_integer_amount_columns": numeric,
+            "supported_for_bounded_mutation": bool(keys and numeric),
+            "warning": (
+                "Candidate columns are inferred from names and input shape; "
+                "neither key semantics nor business truth is inferred."
+            ),
+        })
+    models = sorted(
+        file.stem for file in info["files"]
+        if file.suffix.lower() == ".sql" and "models" in file.parts
+    )
+    return {
+        "format": "dbt_chaos_external_inspection_v1",
+        "project": info["name"],
+        "schema_only_no_row_values_exposed": True,
+        "dbt_or_macro_code_executed": False,
+        "files_in_allowed_scope": len(info["files"]),
+        "model_file_names_not_compiled_dag": models,
+        "seeds": seeds,
+        "note": "Inspect and review target code; a matching seed is not "
+                "proof that a DuckDB run will be portable.",
+    }
+
 def _seed_path(info: dict, table: str) -> Path:
     matches = [p for p in info["files"]
                if p.suffix.lower() == ".csv" and p.stem == table]
