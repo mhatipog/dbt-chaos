@@ -4,6 +4,23 @@
 
 Status: experimental v0.2. The framework is synthetic-only and makes no claim to exercise every possible real-world fault.
 
+## New: one-command executed-SQL resilience assessment
+
+Run a full synthetic **procurement + grants** assessment without API keys,
+model downloads or warehouse access. It compares six operational review cases
+per domain under different evidence gates, demonstrates a held reporting group
+and a signed simulated receipt recovery, and writes JSON/Markdown/HTML evidence.
+
+```bash
+pip install -e .
+dbt-chaos assess-demo --out-dir /tmp/business-truth-assessment --fail-on-unsafe
+```
+
+All SQL in this command runs against the **local SQLite reference**, not a
+connected dbt/Fabric/Databricks warehouse. No real LLM authors the proposed
+edits; do not interpret green controls as production assurance.
+[Complete scope, outputs and limitations](docs/ASSESSMENT_PACK.md).
+
 ## Start here: measure garbage in → trustworthy output
 
 The **[practical user guide](docs/USABLE_WORKFLOW.md)** now provides three
