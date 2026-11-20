@@ -9,7 +9,8 @@ import unittest
 
 from dbt_chaos.external_dbt import (
     ExternalProjectError, _compare, _inventory, _read_csv, _trusted_expected,
-    build_mutation, inspect_external_project, run_external_campaign, write_external_report,
+    build_mutation, inspect_external_project, _numeric_impact,
+    run_external_campaign, write_external_report,
 )
 
 PROJECT = Path("tests/fixtures/foreign_dbt_project")
@@ -21,7 +22,7 @@ class ExternalProjectUnitTests(unittest.TestCase):
     def test_seed_mutations_are_deterministic_and_leave_input_untouched(self):
         original = SOURCE.read_bytes()
         files = {}
-        for fault in ("amount_shift", "duplicate_row", "drop_row"):
+        for fault in ("amount_shift", "duplicate_row", "drop_row", "reorder_rows"):
             data, event = build_mutation(
                 SOURCE, fault, column="amount_cents",
                 match_column="payment_id", match_value="2", delta=2000)
@@ -42,11 +43,26 @@ class ExternalProjectUnitTests(unittest.TestCase):
                 elif fault == "duplicate_row":
                     self.assertEqual(5, len(rows))
                     self.assertEqual(rows[1], rows[2])
-                else:
+                elif fault == "drop_row":
                     self.assertEqual(3, len(rows))
                     self.assertNotIn("2", [r["payment_id"] for r in rows])
+                else:
+                    self.assertEqual(4, len(rows))
+                    self.assertEqual(["4", "3", "2", "1"],
+                                     [r["payment_id"] for r in rows])
         self.assertEqual(original, SOURCE.read_bytes())
-        self.assertEqual(3, len(files))
+        self.assertEqual(4, len(files))
+
+    def test_numeric_delta_is_exact_and_reference_required(self):
+        expected = _trusted_expected(TRUTH, ["order_id", "revenue_cents"])
+        observed = {"columns": ["order_id", "revenue_cents"],
+                    "rows": [("100", "7100"), ("101", "17500")]}
+        impact = _numeric_impact(expected, observed, "revenue_cents")
+        self.assertEqual("2000", impact["signed_error"])
+        self.assertEqual("2000", impact["absolute_error"])
+        self.assertEqual("22600", impact["expected_total"])
+        with self.assertRaisesRegex(ExternalProjectError, "metric column"):
+            _numeric_impact(expected, observed, "missing")
 
     def test_null_and_empty_string_are_not_equivalent_business_results(self):
         baseline = {"columns": ["id", "value"],
@@ -174,8 +190,9 @@ class ExternalProjectRealDbtTests(unittest.TestCase):
             project_dir=PROJECT, model="gold_revenue", seed_table="payments",
             column="amount_cents", match_column="payment_id",
             match_value="2", delta=2000,
-            faults=("amount_shift", "duplicate_row", "drop_row"),
+            faults=("amount_shift", "duplicate_row", "drop_row", "reorder_rows"),
             independent_expected=TRUTH, acknowledge_code_execution=True,
+            metric_column="revenue_cents",
             timeout=120,
         )
         self.assertEqual("real_dbt_core_and_duckdb", report["engine"])
@@ -200,6 +217,12 @@ class ExternalProjectRealDbtTests(unittest.TestCase):
         self.assertEqual("silent_business_mismatch", by_fault["drop_row"]["outcome"])
         # A missing row with no completeness rule can also escape schema tests.
         self.assertEqual(2, report["silent_business_mismatches"])
+        self.assertEqual(1, report["benign_controls_run"])
+        self.assertEqual(0, report["benign_false_alarms"])
+        self.assertEqual("benign_control_passed", by_fault["reorder_rows"]["outcome"])
+        self.assertEqual("2000", by_fault["amount_shift"]["numeric_business_impact"]["signed_error"])
+        self.assertNotIn("payment_id=2", json.dumps(report))
+        self.assertNotIn('"old_cell"', json.dumps(report))
         self.assertTrue(all(
             c.get("outcome") != "execution_failed_not_a_dbt_test_detection"
             for c in report["cases"]))
