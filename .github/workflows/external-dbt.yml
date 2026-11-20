@@ -38,7 +38,7 @@ jobs:
       - name: Install pinned dbt/DuckDB dependencies
         run: python -m pip install --disable-pip-version-check -e '.[dbt]'
       - name: Run static, mutation, guard and actual third-party dbt tests
-        run: python -m unittest discover -s tests -p test_external_dbt.py -v
+        run: DBT_CHAOS_SYNTHETIC_DEBUG=1 python -m unittest discover -s tests -p test_external_dbt.py -v
       - name: Confirm missing independent truth is never called corruption
         run: |
           dbt-chaos external-dbt \
