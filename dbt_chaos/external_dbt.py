@@ -240,12 +240,17 @@ def _run_dbt(
                 statuses[str(item.get("status", "unknown")).lower()] += 1
         except (OSError, ValueError, TypeError):
             statuses["unreadable_run_results"] += 1
-    return {
+    result = {
         "status": "ok" if proc.returncode == 0 else "nonzero",
         "returncode": proc.returncode,
         "test_statuses": dict(sorted(statuses.items())),
         "tests_executed": sum(statuses.values()) if cmd == "test" else 0,
     }
+    # Deliberately opt-in diagnostic for synthetic CI only. dbt stdout can
+    # contain user data or credentials: NEVER include by default.
+    if proc.returncode != 0 and os.environ.get("DBT_CHAOS_SYNTHETIC_DEBUG") == "1":
+        result["synthetic_debug"] = (proc.stdout + "\n" + proc.stderr)[-4500:]
+    return result
 
 
 def _table_snapshot(database: Path, manifest: Path, model: str) -> dict:
@@ -395,7 +400,14 @@ def run_external_campaign(
     clean = _trial(info, mutation=None, source_file=source_file,
                    model=model, timeout=timeout)
     if clean["execution"] != "completed":
-        raise ExternalProjectError("clean baseline dbt seed/run did not complete")
+        failed = clean.get("failed_stage", "unknown")
+        detail = clean.get("stages", {}).get(failed, {})
+        if os.environ.get("DBT_CHAOS_SYNTHETIC_DEBUG") == "1":
+            raise ExternalProjectError(
+                f"synthetic baseline {failed} failed: {detail}")
+        raise ExternalProjectError(
+            f"clean baseline dbt {failed} did not complete "
+            f"(status={detail.get('status')}, code={detail.get('returncode')})")
     baseline = clean["snapshot"]
     gold = (_trusted_expected(independent_expected, baseline["columns"])
             if independent_expected is not None else None)
