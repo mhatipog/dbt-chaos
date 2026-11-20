@@ -1,0 +1,160 @@
+name: Independent upstream dbt project — offline-chaos assurance
+
+on:
+  push:
+    branches: [feature/resilience-evidence-v3-20261120]
+    paths:
+      - 'dbt_chaos/external_dbt.py'
+      - 'dbt_chaos/cli.py'
+      - 'docker/external-assessment.Dockerfile'
+      - '.github/workflows/independent-jaffle.yml'
+  pull_request:
+    branches: [main, 'feature/**', 'research/**']
+    paths:
+      - 'dbt_chaos/external_dbt.py'
+      - 'dbt_chaos/cli.py'
+      - 'docker/external-assessment.Dockerfile'
+      - '.github/workflows/independent-jaffle.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-jaffle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Retrieve precisely pinned upstream third-party source
+        env:
+          UPSTREAM_SHA: 20cc904370818ceab08cf19f8fd196e9e81def88
+        run: |
+          set -eu
+          mkdir -p third-party/jaffle_shop
+          git -C third-party/jaffle_shop init -q
+          git -C third-party/jaffle_shop remote add origin https://github.com/dbt-labs/jaffle_shop_duckdb.git
+          git -C third-party/jaffle_shop -c protocol.file.allow=never \
+            fetch --depth=1 --no-tags origin "$UPSTREAM_SHA"
+          git -C third-party/jaffle_shop checkout --detach --quiet FETCH_HEAD
+          test "$(git -C third-party/jaffle_shop rev-parse HEAD)" = "$UPSTREAM_SHA"
+          printf '%s\n' "$UPSTREAM_SHA" > /tmp/jaffle-upstream-sha.txt
+          printf 'Upstream pinned commit: %s\n' "$UPSTREAM_SHA"
+      - name: Independently derive immutable baseline business reference from original payment seed
+        run: |
+          set -eu
+          mkdir -p reference artifacts
+          chmod 777 artifacts
+          python3 - <<'PY'
+          import csv, hashlib
+          from pathlib import Path
+          src = Path("third-party/jaffle_shop/seeds/raw_payments.csv")
+          dst = Path("reference/stg_payments_expected.csv")
+          with src.open(encoding="utf-8", newline="") as handle:
+              source = list(csv.DictReader(handle))
+          assert len(source) > 25
+          assert len({r["id"] for r in source}) == len(source)
+          assert next(r["amount"] for r in source if r["id"] == "2") == "2000"
+          # Independently specified semantics from upstream documented data contract:
+          # raw integer cents -> payment amount in currency units.
+          with dst.open("w", encoding="utf-8", newline="") as handle:
+              w = csv.writer(handle, lineterminator="\n")
+              w.writerow(["payment_id", "order_id", "payment_method", "amount"])
+              for row in source:
+                  w.writerow([
+                      row["id"], row["order_id"], row["payment_method"],
+                      str(int(row["amount"]) / 100),
+                  ])
+          print("Original seed SHA256", hashlib.sha256(src.read_bytes()).hexdigest())
+          print("Independent reference SHA256", hashlib.sha256(dst.read_bytes()).hexdigest())
+          print("Original source rows", len(source))
+          PY
+      - name: Build distinct execution image (network only while installing trusted dependencies)
+        run: |
+          docker build \
+            -f docker/external-assessment.Dockerfile \
+            -t dbt-chaos-assurance:local .
+          docker image inspect dbt-chaos-assurance:local --format '{{.Id}}'
+      - name: Inspect third-party seed metadata with zero network privileges
+        run: |
+          docker run --rm \
+            --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 128 --memory 1500m --cpus 2 \
+            --tmpfs /tmp:rw,noexec,nosuid,size=384m \
+            --mount "type=bind,src=$PWD/third-party/jaffle_shop,dst=/project,readonly" \
+            dbt-chaos-assurance:local \
+            external-dbt-inspect --project-dir /project > artifacts/upstream-inventory.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("artifacts/upstream-inventory.json").read_text())
+          assert d["project"] == "jaffle_shop"
+          seeds = {x["seed"]: x for x in d["seeds"]}
+          assert "raw_payments" in seeds
+          assert "id" in seeds["raw_payments"]["candidate_row_keys"]
+          assert "amount" in seeds["raw_payments"]["candidate_integer_amount_columns"]
+          assert d["dbt_or_macro_code_executed"] is False
+          PY
+      - name: Execute WHOLE real upstream dbt project and prove silent financial error
+        run: |
+          set +e
+          docker run --rm \
+            --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 128 --memory 1800m --cpus 2 \
+            --tmpfs /tmp:rw,nosuid,size=800m \
+            --mount "type=bind,src=$PWD/third-party/jaffle_shop,dst=/project,readonly" \
+            --mount "type=bind,src=$PWD/reference/stg_payments_expected.csv,dst=/independent.csv,readonly" \
+            --mount "type=bind,src=$PWD/artifacts,dst=/out" \
+            dbt-chaos-assurance:local \
+            external-dbt --project-dir /project \
+            --model stg_payments --seed-table raw_payments \
+            --column amount --match-column id --match-value 2 \
+            --delta 500 --faults amount_shift,duplicate_row,drop_row \
+            --test-scope full \
+            --independent-expected /independent.csv \
+            --acknowledge-project-code-execution \
+            --fail-on-silent \
+            --timeout 120 --out /out/upstream-assessment.json
+          code=$?
+          set -e
+          test "$code" -eq 2
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("artifacts/upstream-assessment.json").read_text())
+          assert r["project"] == "jaffle_shop"
+          assert r["test_scope"] == "full"
+          assert r["baseline_test_coverage_complete"]
+          assert r["baseline_tests_executed"] >= 15, r
+          assert r["baseline_manifest_test_count"] == r["baseline_tests_executed"]
+          assert r["external_gold_provenance_cryptographically_verified"] is False
+          cases = {c["fault"]: c for c in r["cases"]}
+          assert cases["amount_shift"]["outcome"] == "silent_business_mismatch", cases
+          assert cases["duplicate_row"]["outcome"] == "detected_business_mismatch", cases
+          assert cases["duplicate_row"]["failed_test_ids"]
+          # Missing source rows may be detected elsewhere in the FULL model suite.
+          assert cases["drop_row"]["outcome"] in (
+              "silent_business_mismatch", "detected_business_mismatch"), cases
+          print("VERIFIED: independent upstream source, whole test suite, source faults",
+                {k: v["outcome"] for k, v in cases.items()})
+          PY
+      - name: Preserve source and evidence hashes, not the third-party row data
+        if: always()
+        run: |
+          set -eu
+          if [ -f artifacts/upstream-assessment.json ]; then
+            sha256sum artifacts/upstream-assessment.json > artifacts/SHA256SUMS
+          fi
+          cp /tmp/jaffle-upstream-sha.txt artifacts/UPSTREAM_COMMIT 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-jaffle-independent-dbttest-evidence
+          path: |
+            artifacts/upstream-assessment.json
+            artifacts/upstream-inventory.json
+            artifacts/SHA256SUMS
+            artifacts/UPSTREAM_COMMIT
+          retention-days: 14
