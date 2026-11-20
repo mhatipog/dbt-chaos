@@ -61,6 +61,20 @@ class ExternalProjectUnitTests(unittest.TestCase):
         self.assertEqual("2000", impact["signed_error"])
         self.assertEqual("2000", impact["absolute_error"])
         self.assertEqual("22600", impact["expected_total"])
+        offsetting_expected = {
+            "columns": ["account", "revenue_cents"],
+            "rows": [("a", "1000"), ("b", "1000")]}
+        offsetting_observed = {
+            "columns": ["account", "revenue_cents"],
+            "rows": [("a", "1500"), ("b", "500")]}
+        by_key = _numeric_impact(offsetting_expected, offsetting_observed,
+                                 "revenue_cents", "account")
+        self.assertEqual("0", by_key["signed_error"])
+        self.assertEqual("1000", by_key["gross_absolute_error"])
+        self.assertEqual(2, by_key["affected_business_key_count"])
+        self.assertTrue(by_key["net_error_masks_offsetting_errors"])
+        self.assertEqual(0, by_key["missing_business_key_count"])
+        self.assertEqual(0, by_key["unexpected_business_key_count"])
         with self.assertRaisesRegex(ExternalProjectError, "metric column"):
             _numeric_impact(expected, observed, "missing")
 
@@ -192,7 +206,7 @@ class ExternalProjectRealDbtTests(unittest.TestCase):
             match_value="2", delta=2000,
             faults=("amount_shift", "duplicate_row", "drop_row", "reorder_rows"),
             independent_expected=TRUTH, acknowledge_code_execution=True,
-            metric_column="revenue_cents",
+            metric_column="revenue_cents", business_key="order_id",
             timeout=120,
         )
         self.assertEqual("real_dbt_core_and_duckdb", report["engine"])
@@ -221,6 +235,9 @@ class ExternalProjectRealDbtTests(unittest.TestCase):
         self.assertEqual(0, report["benign_false_alarms"])
         self.assertEqual("benign_control_passed", by_fault["reorder_rows"]["outcome"])
         self.assertEqual("2000", by_fault["amount_shift"]["numeric_business_impact"]["signed_error"])
+        self.assertEqual("2000", by_fault["amount_shift"]["numeric_business_impact"]["gross_absolute_error"])
+        self.assertEqual(1, by_fault["amount_shift"]["numeric_business_impact"]["affected_business_key_count"])
+        self.assertEqual(0, by_fault["reorder_rows"]["numeric_business_impact"]["affected_business_key_count"])
         self.assertNotIn("payment_id=2", json.dumps(report))
         self.assertNotIn('"old_cell"', json.dumps(report))
         self.assertTrue(all(
