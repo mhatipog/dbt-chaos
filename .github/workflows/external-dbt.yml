@@ -1,0 +1,83 @@
+name: External dbt project chaos — real unknown-project execution
+
+on:
+  push:
+    branches: [feature/external-dbt-chaos-20261120]
+    paths:
+      - 'dbt_chaos/external_dbt.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_external_dbt.py'
+      - 'tests/fixtures/foreign_dbt_project/**'
+      - 'tests/fixtures/foreign_expected_gold.csv'
+      - '.github/workflows/external-dbt.yml'
+  pull_request:
+    branches: [feature/assessment-pack-20261120]
+    paths:
+      - 'dbt_chaos/external_dbt.py'
+      - 'dbt_chaos/cli.py'
+      - 'tests/test_external_dbt.py'
+      - 'tests/fixtures/foreign_dbt_project/**'
+      - 'tests/fixtures/foreign_expected_gold.csv'
+      - '.github/workflows/external-dbt.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-dbt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned dbt/DuckDB dependencies
+        run: python -m pip install --disable-pip-version-check -e '.[dbt]'
+      - name: Run static, mutation, guard and actual third-party dbt tests
+        run: python -m unittest discover -s tests -p test_external_dbt.py -v
+      - name: Confirm missing independent truth is never called corruption
+        run: |
+          dbt-chaos external-dbt \
+            --project-dir tests/fixtures/foreign_dbt_project \
+            --model gold_revenue --seed-table payments \
+            --column amount_cents --match-column payment_id --match-value 2 \
+            --delta 2000 --faults amount_shift \
+            --acknowledge-project-code-execution \
+            --out /tmp/external-unattested.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/external-unattested.json').read_text())
+          assert r['independent_gold_supplied'] is False
+          assert r['silent_business_mismatches']==0
+          assert r['cases'][0]['outcome']=='unverified_output_drift',r
+          PY
+      - name: Assert fail-on-silent triggers on attested business corruption
+        run: |
+          set +e
+          dbt-chaos external-dbt \
+            --project-dir tests/fixtures/foreign_dbt_project \
+            --model gold_revenue --seed-table payments \
+            --column amount_cents --match-column payment_id --match-value 2 \
+            --delta 2000 --faults amount_shift \
+            --independent-expected tests/fixtures/foreign_expected_gold.csv \
+            --acknowledge-project-code-execution --fail-on-silent \
+            --out /tmp/external-attested.json
+          code=$?
+          set -e
+          test "$code" -eq 2
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/external-attested.json').read_text())
+          assert r['independent_gold_supplied'] is True
+          assert r['clean_baseline_matches_independent_gold'] is True
+          assert r['silent_business_mismatches']==1
+          assert r['cases'][0]['tests_executed']>=1
+          assert r['cases'][0]['outcome']=='silent_business_mismatch'
+          print('REAL DBT executed; known €20 refund error passed ordinary schema tests')
+          PY
