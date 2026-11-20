@@ -63,6 +63,10 @@ class BalancedReviewerTests(unittest.TestCase):
                                  ["selected_source_only_gate"]["wrong_case_count"])
                 self.assertEqual(0,a["policy_results"]
                                  ["selected_attested_gate"]["wrong_case_count"])
+                self.assertEqual(0,a["policy_results"]
+                                 ["selected_provider_receipt_gate"]["wrong_case_count"])
+                self.assertEqual(3,a["policy_results"]
+                                 ["selected_provider_receipt_gate"]["gate_review_required"])
                 # Three unsupported edits PLUS one genuine correction whose
                 # independently trusted receipt is unavailable to this tier.
                 self.assertEqual(4,a["policy_results"]
@@ -82,6 +86,15 @@ class BalancedReviewerTests(unittest.TestCase):
                 self.assertEqual("exact_event_attestation",
                     case["selected_gate_results"]["attested"]
                     ["gate_decision"]["reason"])
+                scoped=case["selected_gate_results"]["provider_receipt"]
+                self.assertEqual("accepted",scoped["gate_decision"]["decision"])
+                self.assertEqual("authentic_scoped_provider_receipt",
+                                 scoped["gate_decision"]["reason"])
+                self.assertFalse(scoped["full_process_ledger_given_to_gate"])
+                self.assertFalse(scoped["model_authored_receipt"])
+                self.assertFalse(scoped["production_provider_connected"])
+                self.assertEqual(0,scoped["actual_business_publication"]
+                                 ["false_published_l1_cents"])
 
     def test_safe_duplicate_cleanup_approved_at_source_only_tier(self):
         for c in self.contracts:
@@ -93,6 +106,8 @@ class BalancedReviewerTests(unittest.TestCase):
                              result["candidate_outcome_class"])
             self.assertEqual("accepted",result["selected_gate_results"]
                              ["source_only"]["gate_decision"]["decision"])
+            self.assertEqual("accepted",result["selected_gate_results"]
+                             ["provider_receipt"]["gate_decision"]["decision"])
             self.assertEqual("exact_duplicate_cleanup",
                              result["selected_gate_results"]["source_only"]
                              ["gate_decision"]["reason"])
