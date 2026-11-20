@@ -22,9 +22,11 @@ not a payment-provider receipt. [Reproducible protocol and evidence
 limitations](docs/INDEPENDENT_BENCHMARK.md).
 
 The adapter additionally distinguishes SQL NULL from empty strings,
-scores signed and absolute monetary/metric discrepancies when supplied
-a justified independent reference, redacts source row identifiers in
-reports, fingerprints copied inputs and supports both **full dbt test
+scores **net and per-business-key gross** numerical discrepancies when supplied
+a justified independent reference (`--metric-column` plus `--business-key`).
+That prevents offsetting misstatements from vanishing in a grand total.
+It redacts source row identifiers in reports, fingerprints copied inputs
+and supports both **full dbt test
 coverage (default)** and explicitly partial selected-model scope.
 The \`reorder_rows\` control checks for false alarms and order-sensitive
 output changes.
