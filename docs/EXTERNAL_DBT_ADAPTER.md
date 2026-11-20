@@ -51,7 +51,8 @@ dbt-chaos external-dbt \
   --column amount_cents \
   --match-column payment_id --match-value 2 \
   --delta 2000 \
-  --faults amount_shift,duplicate_row,drop_row \
+  --faults amount_shift,duplicate_row,drop_row,reorder_rows \
+  --test-scope full --metric-column revenue_cents --business-key order_id \
   --independent-expected tests/fixtures/foreign_expected_gold.csv \
   --acknowledge-project-code-execution \
   --out /tmp/external-dbt-report.json
