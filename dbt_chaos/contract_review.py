@@ -386,7 +386,7 @@ def summarize(report: dict) -> dict:
         "correct_business_decisions":sum(r["good_decision_against_private_truth"]
                                          for r in rows),
         "case_evidence_categories":{
-            r["case_id"]:r["candidate_outcome_class"] for r in rows,
+            r["case_id"]:r["candidate_outcome_class"] for r in rows
         },
         "policy_results":scores,
     }
