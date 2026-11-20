@@ -1,0 +1,63 @@
+name: Scoped independent signed receipt for maintenance corrections
+
+on:
+  push:
+    branches: [research/good-intentions-handoff-20261119]
+    paths:
+      - 'dbt_chaos/contract_receipt.py'
+      - 'tests/test_contract_receipt.py'
+      - '.github/workflows/contract-receipt.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dbt-chaos-scoped-receipt-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  one-transaction-verifiable-evidence:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pure Python contract research benchmark
+        run: python -m pip install --disable-pip-version-check -e .
+      - name: Test signature binding, forgery rejection and actually needed correction
+        run: |
+          python -m compileall -q dbt_chaos
+          python -m unittest discover -s tests -p test_contract_receipt.py -v
+      - name: Regression-test balanced review trade-offs
+        run: python -m unittest discover -s tests -p test_contract_review.py -v
+      - name: Test both domains without exposing event ledger to verifier
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from dbt_chaos.contract_review import make_review_cases
+          from dbt_chaos.contract_agent import candidate_source
+          from dbt_chaos.contract_receipt import demonstrate_receipt_gate
+          for domain in ('procurement','grants'):
+              c=json.loads((Path('contracts')/(domain+'.json')).read_text())
+              events,cases=make_review_cases(c,20261119)
+              selected=cases[4]
+              corrected,effect=candidate_source(
+                  c,selected['initial'],selected['ticket'],selected['candidate'])
+              assert effect=='source_cell_rewritten'
+              report=demonstrate_receipt_gate(
+                  c,events,selected['initial'],corrected,selected['candidate'])
+              assert report['gate']['decision']=='accepted',report
+              assert not report['full_private_ledger_given_to_gate']
+              assert not report['real_external_provider_connected']
+              assert not report['signing_key_exported']
+              assert report['before']['false_published_l1_cents']>0
+              assert report['after']['false_published_l1_cents']==0
+              assert report['after']['status']=='correctly_published'
+              print(domain,'scoped proof passes; needed repair accepted; no full process ledger access')
+          PY
